@@ -1,5 +1,7 @@
 "use client";
 
+import { useSimulation } from "@/app/_modules/SimulationProvider.module";
+import { getPeripheralColor } from "@/app/_utils/peripheralColors";
 /**
  * @module AddPeripheralPanel
  *
@@ -9,8 +11,6 @@
  */
 
 import { useState } from "react";
-import { useSimulation } from "@/app/visualizer/_modules/SimulationProvider.module";
-import { getPeripheralColor } from "@/app/visualizer/_utils/peripheralColors";
 
 // ─── Types ──────────────────────────────────────────────────────────────────
 
@@ -56,24 +56,24 @@ const DEFAULT_FORM: FormState = {
 
 /** Base handler addresses per type (each ISR needs 20 bytes of space). */
 const HANDLER_BASE: Record<PeripheralType, number> = {
-  button:    0x0080,
-  timer:     0x0090,
-  sensor:    0x00A0,
+  button: 0x0080,
+  timer: 0x0090,
+  sensor: 0x00A0,
   proximity: 0x00B0,
   potentiometer: 0x00C0,
-  screen:    0x0000, // screen doesn't fire interrupts — no handler needed
-  led:       0x0000, // LED is output-only and does not fire interrupts
+  screen: 0x0000, // screen doesn't fire interrupts — no handler needed
+  led: 0x0000, // LED is output-only and does not fire interrupts
 };
 
 /** Default field values that pre-populate for each type. */
 const PRESETS: Record<PeripheralType, Partial<FormState>> = {
-  button:    { name: "Power Button",  handlerAddress: "0080", priority: "0" },
-  timer:     { name: "System Timer",  handlerAddress: "0090", priority: "2", interval: "10" },
-  sensor:    { name: "Temp Sensor",   handlerAddress: "00A0", priority: "3", threshold: "75" },
-  proximity: { name: "Prox Sensor",   handlerAddress: "00B0", priority: "1", radius: "100" },
+  button: { name: "Power Button", handlerAddress: "0080", priority: "0" },
+  timer: { name: "System Timer", handlerAddress: "0090", priority: "2", interval: "10" },
+  sensor: { name: "Temp Sensor", handlerAddress: "00A0", priority: "3", threshold: "75" },
+  proximity: { name: "Prox Sensor", handlerAddress: "00B0", priority: "1", radius: "100" },
   potentiometer: { name: "Potentiometer", handlerAddress: "00C0", priority: "2", maxResistance: "100" },
-  screen:    { name: "Screen 32×8",   handlerAddress: "0000", priority: "0", gridWidth: "32", gridHeight: "8", sourceAddress: "0038" },
-  led:       {
+  screen: { name: "Screen 32×8", handlerAddress: "0000", priority: "0", gridWidth: "32", gridHeight: "8", sourceAddress: "0038" },
+  led: {
     name: "LED",
     handlerAddress: "0000",
     priority: "0",
@@ -193,11 +193,10 @@ export function AddPeripheralPanel() {
               <button
                 key={t}
                 onClick={() => applyPreset(t)}
-                className={`flex-1 min-w-15 px-2 py-1 rounded-md text-[10px] font-medium capitalize transition-colors ${
-                  form.peripheralType === t
-                    ? "bg-indigo-100 text-indigo-700"
-                    : "bg-zinc-100 text-zinc-500 hover:bg-zinc-200"
-                }`}
+                className={`flex-1 min-w-15 px-2 py-1 rounded-md text-[10px] font-medium capitalize transition-colors ${form.peripheralType === t
+                  ? "bg-indigo-100 text-indigo-700"
+                  : "bg-zinc-100 text-zinc-500 hover:bg-zinc-200"
+                  }`}
               >
                 {t}
               </button>

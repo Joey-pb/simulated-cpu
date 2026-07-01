@@ -52,9 +52,9 @@ function useDebouncedUpdate(
 /** Tailwind dot class per peripheral status. */
 const STATUS_COLOURS: Record<string, { dot: string }> = {
   DISCONNECTED: { dot: "bg-zinc-400" },
-  CONNECTED:    { dot: "bg-blue-400" },
-  IDLE:         { dot: "bg-amber-400" },
-  ACTIVE:       { dot: "bg-green-500" },
+  CONNECTED: { dot: "bg-blue-400" },
+  IDLE: { dot: "bg-amber-400" },
+  ACTIVE: { dot: "bg-green-500" },
 };
 
 // ─── Helpers ────────────────────────────────────────────────────────────────
@@ -94,7 +94,9 @@ function detectType(meta: Record<string, unknown>): "sensor" | "timer" | "button
   if ("interval" in meta && "counter" in meta) return "timer";
   if ("armed" in meta) return "button";
   if ("radius" in meta && "currentDistance" in meta) return "proximity";
-  if ("pixels" in meta && "width" in meta) return "screen";
+  if ("pixels" in meta && "width" in meta) {
+    return "screen"
+  };
   return "unknown";
 }
 

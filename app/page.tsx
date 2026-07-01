@@ -36,6 +36,7 @@ import { LEDNode } from "@/app/_components/LEDNode.component";
 import { ControlsBar } from "@/app/_components/ControlsBar.component";
 import { AddPeripheralPanel } from "@/app/_components/AddPeripheralPanel.component";
 import { CoreTimeline } from "@/app/_components/CoreTimeline.component";
+import SevenSegmenteDisplayNode from "./_components/SevenSegmentDisplay/SevenSegmenetDisplay.component";
 
 // ─── Constants ──────────────────────────────────────────────────────────────
 
@@ -48,6 +49,7 @@ const NODE_TYPES: NodeTypes = {
   screen: ScreenNode,
   potentiometer: PotentiometerNode,
   led: LEDNode,
+  "seven-segment-display": SevenSegmenteDisplayNode
 };
 
 /** Horizontal spacing between peripheral nodes. */
@@ -124,10 +126,10 @@ function VisualizerCanvas() {
   useEffect(() => {
     // Output peripherals are rendered below memory; input/control above CPU.
     const outputs = peripherals.filter(
-      (p) => p.meta.type === "screen" || p.meta.type === "led",
+      (p) => ["screen", "seven-segment-display", "led"].includes(p.meta.type as string),
     );
     const inputs = peripherals.filter(
-      (p) => p.meta.type !== "screen" && p.meta.type !== "led",
+      (p) => !["screen", "seven-segment-display", "led"].includes(p.meta.type as string),
     );
 
     // Layout input/control peripherals above CPU
@@ -152,7 +154,7 @@ function VisualizerCanvas() {
     const scXs = spreadX(outputs.length, PERIPH_GAP + 40, CPU_X);
     const outputNodes: Node[] = outputs.map((p, i) => ({
       id: `peripheral-${p.id}`,
-      type: (p.meta.type === "screen" ? "screen" : "led") as string,
+      type: p.meta.type as string,
       position: { x: scXs[i], y: CPU_Y + CPU_MEM_GAP + SCREEN_Y_OFFSET },
       data: { peripheral: p },
       draggable: true,

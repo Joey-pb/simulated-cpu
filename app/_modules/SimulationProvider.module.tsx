@@ -59,7 +59,7 @@ interface SimulationActions {
   triggerPeripheral: (id: string) => void;
   loadProgram: (startAddress: number, bytes: number[]) => void;
   addPeripheral: (opts: {
-    peripheralType: "button" | "timer" | "sensor" | "proximity" | "screen" | "potentiometer" | "led";
+    peripheralType: "button" | "timer" | "sensor" | "proximity" | "screen" | "potentiometer" | "led" | "seven-segment-display";
     id: string;
     name: string;
     handlerAddress: number;
@@ -291,7 +291,7 @@ export function SimulationProvider({ children }: { children: ReactNode }) {
 
   const addPeripheral = useCallback(
     (opts: {
-      peripheralType: "button" | "timer" | "sensor" | "proximity" | "screen" | "potentiometer" | "led";
+      peripheralType: "button" | "timer" | "sensor" | "proximity" | "screen" | "potentiometer" | "led" | "seven-segment-display";
       id: string;
       name: string;
       handlerAddress: number;

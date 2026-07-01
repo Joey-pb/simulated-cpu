@@ -21,6 +21,7 @@ import { LEDPeripheral } from "@/peripherals/LED.peripheral";
 import type { ClockEvent, CoreState, ProcessState } from "@/types/cpu.types";
 import type { PeripheralSnapshot, Peripheral } from "@/types/peripheral.types";
 import type { MemoryAccessEvent } from "@/types/memory.types";
+import { SevenSegmentDisplay } from "@/peripherals/SevenSegmentDisplay.peripheral";
 
 // ─── WS Message Types ───────────────────────────────────────────────────────
 
@@ -68,9 +69,9 @@ const cpu = new CPUService(memory);
  */
 const CONST_ONE_ADDR = 0x003C;
 const DATA_ADDRS: Record<string, number> = {
-  timer:     0x003D,
-  sensor:    0x003E,
-  button:    0x003F,
+  timer: 0x003D,
+  sensor: 0x003E,
+  button: 0x003F,
   proximity: 0x0039,
   potentiometer: 0x003B,
 };
@@ -169,6 +170,10 @@ function createPeripheral(msg: IncomingMessage): Peripheral {
         sourceAddress,
         initialLevel,
       );
+    }
+    case "seven-segment-display": {
+      const interval = (msg.interval as number) ?? 8;
+      return new SevenSegmentDisplay(id, name, handlerAddress, interval, memory);
     }
     default:
       throw new Error(`Unknown peripheral type: ${peripheralType}`);
