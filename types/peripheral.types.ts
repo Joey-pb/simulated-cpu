@@ -18,9 +18,9 @@
  */
 export enum PeripheralStatus {
   DISCONNECTED = "DISCONNECTED",
-  CONNECTED    = "CONNECTED",
-  ACTIVE       = "ACTIVE",
-  IDLE         = "IDLE",
+  CONNECTED = "CONNECTED",
+  ACTIVE = "ACTIVE",
+  IDLE = "IDLE",
 }
 
 // ─── Interrupt ──────────────────────────────────────────────────────────────
@@ -50,7 +50,7 @@ export interface Interrupt {
  * connected peripheral. If the peripheral needs to fire, it returns an
  * {@link Interrupt}; otherwise it returns `null`.
  */
-export interface Peripheral {
+export interface Peripheral<Meta = Record<string, unknown>> {
   /** Unique identifier (e.g. `"timer-1"`). */
   id: string;
   /** Human-readable display name. */
@@ -72,7 +72,7 @@ export interface Peripheral {
   trigger(): void;
 
   /** Serialise state for persistence / UI display. */
-  toJSON(): PeripheralSnapshot;
+  toJSON(): PeripheralSnapshot<Meta>;
 }
 
 // ─── Serialisable Snapshot ──────────────────────────────────────────────────
@@ -81,7 +81,7 @@ export interface Peripheral {
  * JSON-safe representation of a peripheral's state.
  * Used for persistence and for broadcasting to the frontend.
  */
-export interface PeripheralSnapshot {
+export interface PeripheralSnapshot<Meta = Record<string, unknown>> {
   /** Peripheral ID. */
   id: string;
   /** Display name. */
@@ -93,5 +93,5 @@ export interface PeripheralSnapshot {
   /** ISR entry point address. */
   handlerAddress: number;
   /** Peripheral-specific data (e.g. timer interval, sensor threshold). */
-  meta: Record<string, unknown>;
+  meta: Meta;
 }

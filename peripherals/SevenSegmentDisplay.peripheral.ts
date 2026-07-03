@@ -1,16 +1,13 @@
 import { MemoryService } from "@/services/Memory.service";
 import {
   PeripheralStatus,
-  type Peripheral,
   type Interrupt,
-  type PeripheralSnapshot,
+  type Peripheral
 } from "@/types/peripheral.types";
 
-export class SevenSegmentDisplay implements Peripheral {
-  readonly id: string;
-  readonly name: string;
-  priority: number;
-  status: PeripheralStatus;
+export type SevenSegmentDisplayProps = {
+  type: string,
+  sourceAddress: number,
   values: [
     number | undefined,
     number | undefined,
@@ -22,7 +19,17 @@ export class SevenSegmentDisplay implements Peripheral {
     number | undefined,
     number | undefined,
     number | undefined
-  ] | undefined;
+  ] | undefined,
+  pixels: boolean,
+  width: boolean
+}
+
+export class SevenSegmentDisplay implements Peripheral<SevenSegmentDisplayProps> {
+  readonly id: string;
+  readonly name: string;
+  priority: number;
+  status: PeripheralStatus;
+  values: SevenSegmentDisplayProps["values"];
   private handlerAddress: number;
   private readonly memory: MemoryService;
 
@@ -48,7 +55,7 @@ export class SevenSegmentDisplay implements Peripheral {
 
     this.memory = memory;
     this.sourceAddress = sourceAddress;
-    this.initValue();
+    this.resetValue();
   }
 
   // ── Lifecycle ─────────────────────────────────────────────────────────
@@ -71,7 +78,7 @@ export class SevenSegmentDisplay implements Peripheral {
 
   /** Clear all pixels to 0 (off). */
   clearScreen(): void {
-    this.initValue();
+    this.resetValue();
   }
 
   // ── Trigger ───────────────────────────────────────────────────────────
@@ -110,12 +117,12 @@ export class SevenSegmentDisplay implements Peripheral {
     return null;
   }
 
-  private initValue() {
-    this.values = [] as unknown as typeof this.values;
+  private resetValue() {
+    this.values = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9];
   }
 
   // ── Serialisation ─────────────────────────────────────────────────────
-  toJSON(): PeripheralSnapshot {
+  toJSON() {
     return {
       id: this.id,
       name: this.name,
