@@ -13,7 +13,7 @@
     "test-peripherals": "tsx scripts/test-peripherals.ts",
     "test-persistence": "tsx scripts/test-persistence.ts",
     "ws": "tsx server/ws.ts",
-    "dev:all": "trap 'kill 0' SIGINT; tsx server/ws.ts & next dev -p 3005 & wait"
+    "dev:all": "concurrently -k \"tsx server/ws.ts\" \"next dev -p 3005\""
   },
   "dependencies": {
     "@xyflow/react": "^12.10.1",
@@ -29,6 +29,7 @@
     "@types/react": "^19",
     "@types/react-dom": "^19",
     "@types/ws": "^8.18.1",
+    "concurrently": "^10.0.3",
     "eslint": "^9",
     "eslint-config-next": "16.1.6",
     "tailwindcss": "^4",
