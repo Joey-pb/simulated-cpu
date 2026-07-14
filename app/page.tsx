@@ -37,10 +37,17 @@ import { ControlsBar } from "@/app/_components/ControlsBar.component";
 import { AddPeripheralPanel } from "@/app/_components/AddPeripheralPanel.component";
 import { CoreTimeline } from "@/app/_components/CoreTimeline.component";
 import SevenSegmenteDisplayNode from "./_components/SevenSegmentDisplay/SevenSegmenetDisplay.component";
+import { isOutputType } from "@/peripherals/registry";
 
 // ─── Constants ──────────────────────────────────────────────────────────────
 
-/** Registered custom React Flow node types. */
+/**
+ * Registered custom React Flow node types.
+ *
+ * A peripheral whose type key isn't listed here falls back to the generic
+ * {@link PeripheralNode} — so a custom visual is optional: build a component
+ * and add one entry keyed by your peripheral's type.
+ */
 const NODE_TYPES: NodeTypes = {
   cpu: CPUNode,
   memory: MemoryNode,
@@ -51,6 +58,11 @@ const NODE_TYPES: NodeTypes = {
   led: LEDNode,
   "seven-segment-display": SevenSegmenteDisplayNode
 };
+
+/** Resolve a peripheral type to a node type, falling back to the generic node. */
+function nodeTypeFor(peripheralType: string): string {
+  return peripheralType in NODE_TYPES ? peripheralType : "peripheral";
+}
 
 /** Horizontal spacing between peripheral nodes. */
 const PERIPH_GAP = 220;
@@ -125,36 +137,26 @@ function VisualizerCanvas() {
 
   useEffect(() => {
     // Output peripherals are rendered below memory; input/control above CPU.
-    const outputs = peripherals.filter(
-      (p) => ["screen", "seven-segment-display", "led"].includes(p.meta.type as string),
-    );
-    const inputs = peripherals.filter(
-      (p) => !["screen", "seven-segment-display", "led"].includes(p.meta.type as string),
-    );
+    const outputs = peripherals.filter((p) => isOutputType(p.meta.type as string));
+    const inputs = peripherals.filter((p) => !isOutputType(p.meta.type as string));
 
     // Layout input/control peripherals above CPU
     const nsCount = inputs.length;
     const nsXs = spreadX(nsCount, PERIPH_GAP, CPU_X);
 
-    const upperNodes: Node[] = inputs.map((p, i) => {
-      let nodeType = "peripheral";
-      if (p.meta.type === "proximity") nodeType = "proximity";
-      if (p.meta.type === "potentiometer") nodeType = "potentiometer";
-
-      return {
-        id: `peripheral-${p.id}`,
-        type: nodeType as string,
-        position: { x: nsXs[i], y: CPU_Y - PERIPH_CPU_GAP },
-        data: { peripheral: p },
-        draggable: true,
-      };
-    });
+    const upperNodes: Node[] = inputs.map((p, i) => ({
+      id: `peripheral-${p.id}`,
+      type: nodeTypeFor(p.meta.type as string),
+      position: { x: nsXs[i], y: CPU_Y - PERIPH_CPU_GAP },
+      data: { peripheral: p },
+      draggable: true,
+    }));
 
     // Layout output peripherals below Memory
     const scXs = spreadX(outputs.length, PERIPH_GAP + 40, CPU_X);
     const outputNodes: Node[] = outputs.map((p, i) => ({
       id: `peripheral-${p.id}`,
-      type: p.meta.type as string,
+      type: nodeTypeFor(p.meta.type as string),
       position: { x: scXs[i], y: CPU_Y + CPU_MEM_GAP + SCREEN_Y_OFFSET },
       data: { peripheral: p },
       draggable: true,
@@ -166,7 +168,7 @@ function VisualizerCanvas() {
       const isScreen = p.meta.type === "screen";
       const isFiring = interruptSources.includes(p.id);
 
-      if (isScreen || p.meta.type === "led") {
+      if (isOutputType(p.meta.type as string)) {
         // Output peripherals get a data-bus edge from CPU.
         return {
           id: `peripheral-${p.id}-cpu`,

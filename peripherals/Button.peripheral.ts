@@ -95,6 +95,7 @@ export default class ButtonPeripheral implements Peripheral {
       status: this.status,
       handlerAddress: this.handlerAddress,
       meta: {
+        type: "button",
         armed: this.armed,
       },
     };

@@ -43,6 +43,20 @@ interface SimulationState {
 
 // ─── Actions ────────────────────────────────────────────────────────────────
 
+/**
+ * Options for registering a peripheral. `peripheralType` must match a type
+ * key in `peripherals/registry.ts`; any extra keys are that type's config
+ * fields (e.g. `interval` for a timer).
+ */
+interface AddPeripheralOptions {
+  peripheralType: string;
+  id: string;
+  name: string;
+  handlerAddress: number;
+  priority?: number;
+  [configKey: string]: unknown;
+}
+
 /** Imperative actions sent as WS commands to the server. */
 interface SimulationActions {
   start: () => void;
@@ -58,23 +72,7 @@ interface SimulationActions {
   setClockSpeed: (ms: number) => void;
   triggerPeripheral: (id: string) => void;
   loadProgram: (startAddress: number, bytes: number[]) => void;
-  addPeripheral: (opts: {
-    peripheralType: "button" | "timer" | "sensor" | "proximity" | "screen" | "potentiometer" | "led" | "seven-segment-display";
-    id: string;
-    name: string;
-    handlerAddress: number;
-    priority?: number;
-    interval?: number;
-    threshold?: number;
-    radius?: number;
-    gridWidth?: number;
-    gridHeight?: number;
-    sourceAddress?: number;
-    maxResistance?: number;
-    color?: string;
-    registerAddress?: number;
-    initialLevel?: "LOW" | "HIGH";
-  }) => void;
+  addPeripheral: (opts: AddPeripheralOptions) => void;
   removePeripheral: (id: string) => void;
   updatePeripheral: (id: string, updates: Record<string, unknown>) => void;
   setSchedulerType: (schedulerType: string) => void;
@@ -290,23 +288,7 @@ export function SimulationProvider({ children }: { children: ReactNode }) {
   );
 
   const addPeripheral = useCallback(
-    (opts: {
-      peripheralType: "button" | "timer" | "sensor" | "proximity" | "screen" | "potentiometer" | "led" | "seven-segment-display";
-      id: string;
-      name: string;
-      handlerAddress: number;
-      priority?: number;
-      interval?: number;
-      threshold?: number;
-      radius?: number;
-      gridWidth?: number;
-      gridHeight?: number;
-      sourceAddress?: number;
-      maxResistance?: number;
-      color?: string;
-      registerAddress?: number;
-      initialLevel?: "LOW" | "HIGH";
-    }) => {
+    (opts: AddPeripheralOptions) => {
       send({ type: "registerPeripheral", ...opts });
     },
     [send]
