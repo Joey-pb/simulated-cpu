@@ -11,17 +11,10 @@ import { WebSocketServer, WebSocket } from "ws";
 import { MemoryService } from "@/services/Memory.service";
 import { CPUService } from "@/services/cpu/CPU.service";
 import { SchedulerType } from "@/types/cpu.types";
-import ButtonPeripheral from "@/peripherals/Button.peripheral";
-import TimerPeripheral from "@/peripherals/Timer.peripheral";
-import { SensorPeripheral } from "@/peripherals/Sensor.peripheral";
-import { ProximitySensorPeripheral } from "@/peripherals/ProximitySensor.peripheral";
-import { ScreenPeripheral } from "@/peripherals/Screen.peripheral";
-import { PotentiometerPeripheral } from "@/peripherals/Potentiometer.peripheral";
-import { LEDPeripheral } from "@/peripherals/LED.peripheral";
+import { getDefinition, type PeripheralConfig } from "@/peripherals/registry";
 import type { ClockEvent, CoreState, ProcessState } from "@/types/cpu.types";
 import type { PeripheralSnapshot, Peripheral } from "@/types/peripheral.types";
 import type { MemoryAccessEvent } from "@/types/memory.types";
-import { SevenSegmentDisplay } from "@/peripherals/SevenSegmentDisplay.peripheral";
 
 // ─── WS Message Types ───────────────────────────────────────────────────────
 
@@ -61,20 +54,13 @@ const cpu = new CPUService(memory);
 /**
  * Data region (within first 64 bytes so it's visible in the Memory hex grid):
  *   0x003C = constant 1 (used by ISRs for incrementing)
- *   0x003D = timer counter
- *   0x003E = sensor counter
- *   0x003F = button counter
+ *
+ * Each peripheral type's counter address comes from its `dataAddress` in
+ * `peripherals/registry.ts`.
  *
  * Each ISR: LOAD counter → LOAD const(1) → ADD → STORE counter → IRET
  */
 const CONST_ONE_ADDR = 0x003C;
-const DATA_ADDRS: Record<string, number> = {
-  timer: 0x003D,
-  sensor: 0x003E,
-  button: 0x003F,
-  proximity: 0x0039,
-  potentiometer: 0x003B,
-};
 
 /** Build a 20-byte ISR that increments the counter at `dataAddr`. */
 function buildISR(dataAddr: number): number[] {
@@ -97,8 +83,8 @@ function ensureConstant() {
 /** Load an ISR for a peripheral type at its handler address. */
 function loadISRForPeripheral(peripheralType: string, handlerAddress: number) {
   ensureConstant();
-  const dataAddr = DATA_ADDRS[peripheralType];
-  if (dataAddr === undefined) return; // unknown type — skip
+  const dataAddr = getDefinition(peripheralType)?.dataAddress;
+  if (dataAddr === undefined) return; // no ISR counter for this type — skip
   const isr = buildISR(dataAddr);
   memory.loadProgram(handlerAddress, isr);
   console.log(
@@ -109,75 +95,26 @@ function loadISRForPeripheral(peripheralType: string, handlerAddress: number) {
 // ─── Peripheral Factory ─────────────────────────────────────────────────────
 
 /**
- * Instantiate a peripheral from a raw WS message.
- * @throws If `peripheralType` is not one of button | timer | sensor.
+ * Instantiate a peripheral from a raw WS message using its registry entry.
+ * @throws If `peripheralType` is not in `peripherals/registry.ts`.
  */
 function createPeripheral(msg: IncomingMessage): Peripheral {
   const peripheralType = msg.peripheralType as string;
-  const id = msg.id as string;
-  const name = msg.name as string;
-  const handlerAddress = msg.handlerAddress as number;
-  const priority = (msg.priority as number) ?? 0;
-
-  switch (peripheralType) {
-    case "button":
-      return new ButtonPeripheral(id, name, handlerAddress, priority);
-    case "timer": {
-      const interval = (msg.interval as number) ?? 10;
-      return new TimerPeripheral(id, name, handlerAddress, interval, priority);
-    }
-    case "sensor": {
-      const threshold = (msg.threshold as number) ?? 75;
-      return new SensorPeripheral(id, name, handlerAddress, threshold, priority);
-    }
-    case "proximity": {
-      const radius = (msg.radius as number) ?? 100;
-      return new ProximitySensorPeripheral(
-        id, name, handlerAddress, radius, priority, memory,
-      );
-    }
-    case "screen": {
-      const width = (msg.gridWidth as number) ?? 32;
-      const height = (msg.gridHeight as number) ?? 8;
-      const sourceAddress = (msg.sourceAddress as number) ?? 0x0038;
-      return new ScreenPeripheral(
-        id, name, handlerAddress, width, height, sourceAddress, memory,
-      );
-    }
-    case "potentiometer": {
-      const maxResistance = (msg.maxResistance as number) ?? 100;
-      const registerAddress = (msg.registerAddress as number) ?? 0x003A;
-      return new PotentiometerPeripheral(
-        id,
-        name,
-        handlerAddress,
-        maxResistance,
-        priority,
-        memory,
-        registerAddress,
-      );
-    }
-    case "led": {
-      const color = (msg.color as string) ?? "#ef4444";
-      const sourceAddress = (msg.sourceAddress as number) ?? 0x003A;
-      const initialLevel = ((msg.initialLevel as string) ?? "LOW") === "HIGH" ? "HIGH" : "LOW";
-      return new LEDPeripheral(
-        id,
-        name,
-        0,
-        color,
-        memory,
-        sourceAddress,
-        initialLevel,
-      );
-    }
-    case "seven-segment-display": {
-      const interval = (msg.interval as number) ?? 8;
-      return new SevenSegmentDisplay(id, name, handlerAddress, interval, memory);
-    }
-    default:
-      throw new Error(`Unknown peripheral type: ${peripheralType}`);
+  const definition = getDefinition(peripheralType);
+  if (!definition) {
+    throw new Error(
+      `Unknown peripheral type: ${peripheralType} — is it registered in peripherals/registry.ts?`
+    );
   }
+
+  const config: PeripheralConfig = {
+    ...msg,
+    id: msg.id as string,
+    name: msg.name as string,
+    handlerAddress: (msg.handlerAddress as number) ?? 0,
+    priority: (msg.priority as number) ?? definition.defaultPriority ?? 0,
+  };
+  return definition.create(config, memory);
 }
 
 // ─── Helpers ────────────────────────────────────────────────────────────────
@@ -400,46 +337,8 @@ function handleMessage(ws: WebSocket, raw: string): void {
         const peripheral = cpu.getPeripheralManager().get(id);
         if (!peripheral) throw new Error(`Peripheral "${id}" not found`);
 
-        if (peripheral instanceof TimerPeripheral) {
-          if (typeof updates.interval === "number") {
-            peripheral.setInterval(updates.interval);
-          }
-        } else if (peripheral instanceof SensorPeripheral) {
-          if (typeof updates.threshold === "number") {
-            peripheral.setThreshold(updates.threshold);
-          }
-          if (typeof updates.currentValue === "number") {
-            peripheral.setValue(updates.currentValue);
-          }
-        } else if (peripheral instanceof ProximitySensorPeripheral) {
-          if (typeof updates.currentDistance === "number") {
-            peripheral.setDistance(updates.currentDistance);
-          }
-          if (typeof updates.radius === "number") {
-            peripheral.setRadius(updates.radius);
-          }
-        } else if (peripheral instanceof ScreenPeripheral) {
-          if (typeof updates.sourceAddress === "number") {
-            peripheral.setSourceAddress(updates.sourceAddress);
-          }
-          if (typeof updates.tickDivider === "number") {
-            peripheral.setTickDivider(updates.tickDivider);
-          }
-          if (updates.clear === true) {
-            peripheral.clearScreen();
-          }
-        } else if (peripheral instanceof PotentiometerPeripheral) {
-          if (typeof updates.maxResistance === "number") {
-            peripheral.setMaxResistance(updates.maxResistance);
-          }
-          if (typeof updates.currentResistance === "number") {
-            peripheral.setResistance(updates.currentResistance);
-          }
-        } else if (peripheral instanceof LEDPeripheral) {
-          if (typeof updates.sourceAddress === "number") {
-            peripheral.setSourceAddress(updates.sourceAddress);
-          }
-        }
+        const definition = getDefinition(peripheral.toJSON().meta.type as string);
+        definition?.applyUpdates?.(peripheral, updates);
 
         broadcast(buildPayload("state"));
         console.log(`[WS] Updated peripheral "${id}"`, updates);

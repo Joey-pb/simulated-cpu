@@ -39,4 +39,4 @@ Every tick, the server sends a full state snapshot including: core states, proce
 
 ## Peripheral Factory
 
-When the frontend sends a `registerPeripheral` command, the server's `createPeripheral()` function instantiates the correct class based on the `peripheralType` field. If you create a new peripheral, you need to add a case here (see `peripherals/README.md` for instructions).
+When the frontend sends a `registerPeripheral` command, the server's `createPeripheral()` function looks up the `peripheralType` in `peripherals/registry.ts` and calls that entry's `create()` factory. If you create a new peripheral, you register it there — this file never needs to change (see `peripherals/README.md` for instructions).

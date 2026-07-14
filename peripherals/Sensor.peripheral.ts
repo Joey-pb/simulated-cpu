@@ -151,6 +151,7 @@ export class SensorPeripheral implements Peripheral {
       status: this.status,
       handlerAddress: this.handlerAddress,
       meta: {
+        type: "sensor",
         threshold: this.threshold,
         currentValue: this.currentValue,
         wasAboveThreshold: this.wasAboveThreshold,

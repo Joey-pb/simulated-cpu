@@ -128,6 +128,7 @@ export default class TimerPeripheral implements Peripheral {
       status: this.status,
       handlerAddress: this.handlerAddress,
       meta: {
+        type: "timer",
         interval: this.interval,
         counter: this.counter,
         forceFire: this.forceFire,

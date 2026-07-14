@@ -4,122 +4,93 @@
  * @module AddPeripheralPanel
  *
  * Collapsible side-panel for registering new peripherals and listing
- * existing ones. Provides type presets, auto-incrementing handler
- * addresses, and a remove button per peripheral.
+ * existing ones. The type buttons, presets, and config fields are all
+ * generated from `peripherals/registry.ts` — register a peripheral there
+ * and it shows up here automatically.
  */
 
 import { useState } from "react";
 import { useSimulation } from "@/app/_modules/SimulationProvider.module";
 import { getPeripheralColor } from "@/app/_utils/peripheralColors";
+import {
+  PERIPHERAL_REGISTRY,
+  getDefinition,
+  type PeripheralDefinition,
+  type PeripheralField,
+} from "@/peripherals/registry";
 
-// ─── Types ──────────────────────────────────────────────────────────────────
-
-/** Supported peripheral type identifiers. */
-type PeripheralType = "button" | "timer" | "sensor" | "proximity" | "screen" | "potentiometer" | "led" | "seven-segment-display";
+// ─── Form State ─────────────────────────────────────────────────────────────
 
 /** Form field values kept as strings for controlled inputs. */
 interface FormState {
-  peripheralType: PeripheralType;
+  peripheralType: string;
   name: string;
   handlerAddress: string; // hex input as string, parsed on submit
   priority: string;
-  interval: string;       // timer-only
-  threshold: string;      // sensor-only
-  radius: string;         // proximity-only
-  gridWidth: string;      // screen-only
-  gridHeight: string;     // screen-only
-  sourceAddress: string;  // screen-only
-  maxResistance: string;  // potentiometer-only
-  ledColor: string;       // led-only (create-time only)
-  ledSourceAddress: string; // led-only
-  ledInitialLevel: "LOW" | "HIGH"; // led-only
+  /** Values for the selected type's registry fields, keyed by field key. */
+  fields: Record<string, string>;
 }
 
-const DEFAULT_FORM: FormState = {
-  peripheralType: "button",
-  name: "",
-  handlerAddress: "0080",
-  priority: "0",
-  interval: "10",
-  threshold: "75",
-  radius: "100",
-  gridWidth: "32",
-  gridHeight: "8",
-  sourceAddress: "0038",
-  maxResistance: "100",
-  ledColor: "#ef4444",
-  ledSourceAddress: "003A",
-  ledInitialLevel: "LOW",
-};
-
-// ─── Presets ────────────────────────────────────────────────────────────────
-
-/** Base handler addresses per type (each ISR needs 20 bytes of space). */
-const HANDLER_BASE: Record<PeripheralType, number> = {
-  button: 0x0080,
-  timer: 0x0090,
-  sensor: 0x00A0,
-  proximity: 0x00B0,
-  potentiometer: 0x00C0,
-  screen: 0x0000, // screen doesn't fire interrupts — no handler needed
-  led: 0x0000, // LED is output-only and does not fire interrupts
-  "seven-segment-display": 0x0000
-};
-
-/** Default field values that pre-populate for each type. */
-const PRESETS: Record<PeripheralType, Partial<FormState>> = {
-  button: { name: "Power Button", handlerAddress: "0080", priority: "0" },
-  timer: { name: "System Timer", handlerAddress: "0090", priority: "2", interval: "10" },
-  sensor: { name: "Temp Sensor", handlerAddress: "00A0", priority: "3", threshold: "75" },
-  proximity: { name: "Prox Sensor", handlerAddress: "00B0", priority: "1", radius: "100" },
-  potentiometer: { name: "Potentiometer", handlerAddress: "00C0", priority: "2", maxResistance: "100" },
-  screen: { name: "Screen 32×8", handlerAddress: "0000", priority: "0", gridWidth: "32", gridHeight: "8", sourceAddress: "0038" },
-  "seven-segment-display": { name: "Seven Segment Display 32×8", handlerAddress: "0000", priority: "0", gridWidth: "32", gridHeight: "8", sourceAddress: "0038" },
-  led: {
-    name: "LED",
-    handlerAddress: "0000",
-    priority: "0",
-    ledColor: "#ef4444",
-    ledSourceAddress: "003A",
-    ledInitialLevel: "LOW",
-  },
-};
+/** Default string values for a definition's config fields. */
+function defaultFieldValues(def: PeripheralDefinition): Record<string, string> {
+  return Object.fromEntries(def.fields.map((f) => [f.key, f.defaultValue]));
+}
 
 // ─── Helpers ────────────────────────────────────────────────────────────────
 
 /** Per-type counter so each new peripheral of the same type gets a unique handler address. */
-const typeCounts: Record<PeripheralType, number> = {
-  button: 0,
-  timer: 0,
-  sensor: 0,
-  proximity: 0,
-  screen: 0,
-  potentiometer: 0,
-  led: 0,
-  "seven-segment-display": 0
-};
+const typeCounts: Record<string, number> = {};
 let idCounter = 0;
+
 /** Generate a unique ID for a new peripheral. */
-function nextId(type: PeripheralType): string {
+function nextId(type: string): string {
   idCounter++;
   return `${type}-${idCounter}`;
 }
 
 /** Return a handler address that doesn't overlap with previously added peripherals of this type. */
-function nextHandlerAddress(type: PeripheralType): string {
-  const addr = HANDLER_BASE[type] + typeCounts[type] * 0x20; // 32-byte spacing
-  typeCounts[type]++;
+function nextHandlerAddress(def: PeripheralDefinition): string {
+  if (def.kind === "output") return "0000"; // outputs never fire interrupts
+  const count = typeCounts[def.type] ?? 0;
+  typeCounts[def.type] = count + 1;
+  const addr = (def.handlerBase ?? 0x0080) + count * 0x20; // 32-byte spacing
   return addr.toString(16).padStart(4, "0");
 }
+
+/** Parse a form string into the value sent to the server, per field kind. */
+function parseFieldValue(field: PeripheralField, value: string): unknown {
+  switch (field.input) {
+    case "number": {
+      const n = parseInt(value, 10);
+      return isNaN(n) ? parseInt(field.defaultValue, 10) : n;
+    }
+    case "hex": {
+      const n = parseInt(value, 16);
+      return isNaN(n) ? parseInt(field.defaultValue, 16) : n;
+    }
+    default:
+      return value || field.defaultValue;
+  }
+}
+
+const FIRST_DEF = PERIPHERAL_REGISTRY[0];
+
+const DEFAULT_FORM: FormState = {
+  peripheralType: FIRST_DEF.type,
+  name: "",
+  handlerAddress: (FIRST_DEF.handlerBase ?? 0x0080).toString(16).padStart(4, "0"),
+  priority: String(FIRST_DEF.defaultPriority ?? 0),
+  fields: defaultFieldValues(FIRST_DEF),
+};
 
 // ─── Component ──────────────────────────────────────────────────────────────
 
 /**
  * Collapsible panel for adding peripherals to the simulation.
  *
- * Provides a form with fields for type, name, handler address, priority,
- * and type-specific options (interval for Timer, threshold for Sensor).
- * Also lists currently registered peripherals with a remove button.
+ * Renders a form with name, handler address (input peripherals only),
+ * priority, and whatever config fields the selected type declares in the
+ * registry. Also lists currently registered peripherals with a remove button.
  */
 export function AddPeripheralPanel() {
   const { addPeripheral, removePeripheral, peripherals, connected } =
@@ -127,52 +98,42 @@ export function AddPeripheralPanel() {
   const [open, setOpen] = useState(false);
   const [form, setForm] = useState<FormState>(DEFAULT_FORM);
 
-  function applyPreset(type: PeripheralType) {
+  const selectedDef = getDefinition(form.peripheralType) ?? FIRST_DEF;
+
+  function applyPreset(def: PeripheralDefinition) {
     setForm((prev) => ({
       ...prev,
-      ...PRESETS[type],
-      peripheralType: type,
-      handlerAddress: nextHandlerAddress(type),
+      peripheralType: def.type,
+      handlerAddress: nextHandlerAddress(def),
+      priority: String(def.defaultPriority ?? 0),
+      fields: defaultFieldValues(def),
+    }));
+  }
+
+  function setFieldValue(key: string, value: string) {
+    setForm((prev) => ({
+      ...prev,
+      fields: { ...prev.fields, [key]: value },
     }));
   }
 
   function handleSubmit() {
-    const handlerAddress = parseInt(form.handlerAddress, 16);
-    if (isNaN(handlerAddress) && form.peripheralType !== "screen" && form.peripheralType !== "led") return;
+    const isOutput = selectedDef.kind === "output";
+    const handlerAddress = isOutput ? 0 : parseInt(form.handlerAddress, 16);
+    if (isNaN(handlerAddress)) return;
 
     addPeripheral({
-      peripheralType: form.peripheralType,
-      id: nextId(form.peripheralType),
-      name: form.name || PRESETS[form.peripheralType].name || form.peripheralType,
-      handlerAddress: form.peripheralType === "screen" || form.peripheralType === "led" ? 0 : handlerAddress,
+      peripheralType: selectedDef.type,
+      id: nextId(selectedDef.type),
+      name: form.name || selectedDef.defaultName,
+      handlerAddress,
       priority: parseInt(form.priority) || 0,
-      ...(form.peripheralType === "timer" && {
-        interval: parseInt(form.interval) || 10,
-      }),
-      ...(form.peripheralType === "sensor" && {
-        threshold: parseInt(form.threshold) || 75,
-      }),
-      ...(form.peripheralType === "proximity" && {
-        radius: parseInt(form.radius) || 100,
-      }),
-      ...(form.peripheralType === "screen" && {
-        gridWidth: parseInt(form.gridWidth) || 32,
-        gridHeight: parseInt(form.gridHeight) || 8,
-        sourceAddress: parseInt(form.sourceAddress, 16) || 0x0038,
-      }),
-      ...(form.peripheralType === "potentiometer" && {
-        maxResistance: parseInt(form.maxResistance) || 100,
-      }),
-      ...(form.peripheralType === "led" && {
-        color: form.ledColor || "#ef4444",
-        sourceAddress: parseInt(form.ledSourceAddress, 16) || 0x003A,
-        initialLevel: form.ledInitialLevel,
-      }),
-      ...(form.peripheralType === "seven-segment-display" && {
-        color: form.ledColor || "#ef4444",
-        sourceAddress: parseInt(form.ledSourceAddress, 16) || 0x003A,
-        initialLevel: form.ledInitialLevel,
-      }),
+      ...Object.fromEntries(
+        selectedDef.fields.map((f) => [
+          f.key,
+          parseFieldValue(f, form.fields[f.key] ?? f.defaultValue),
+        ]),
+      ),
     });
 
     // Reset name so the next add gets a fresh one
@@ -181,6 +142,75 @@ export function AddPeripheralPanel() {
 
   const inputClass =
     "w-full px-2 py-1 rounded-md border border-zinc-200 text-xs bg-white text-zinc-700 focus:outline-none focus:ring-1 focus:ring-indigo-300";
+
+  /** Render one registry-declared config field with the right widget. */
+  function renderField(field: PeripheralField) {
+    const value = form.fields[field.key] ?? field.defaultValue;
+
+    switch (field.input) {
+      case "color":
+        return (
+          <div
+            key={field.key}
+            className="flex items-center gap-2 rounded-md border border-zinc-200 bg-zinc-50 px-2 py-1.5"
+          >
+            <label className="text-[11px] text-zinc-600">{field.label}</label>
+            <input
+              type="color"
+              value={value}
+              onChange={(e) => setFieldValue(field.key, e.target.value)}
+              className="h-6 w-10 cursor-pointer rounded border border-zinc-200 bg-white"
+            />
+            <span className="text-[10px] font-mono text-zinc-500 uppercase">
+              {value}
+            </span>
+          </div>
+        );
+      case "select":
+        return (
+          <div
+            key={field.key}
+            className="flex items-center gap-2 rounded-md border border-zinc-200 bg-zinc-50 px-2 py-1.5"
+          >
+            <label className="text-[11px] text-zinc-600">{field.label}</label>
+            <select
+              value={value}
+              onChange={(e) => setFieldValue(field.key, e.target.value)}
+              className="ml-auto px-2 py-1 rounded border border-zinc-200 bg-white text-[11px] text-zinc-700"
+            >
+              {(field.options ?? []).map((opt) => (
+                <option key={opt} value={opt}>
+                  {opt}
+                </option>
+              ))}
+            </select>
+          </div>
+        );
+      case "number":
+        return (
+          <input
+            key={field.key}
+            className={inputClass}
+            placeholder={field.label}
+            type="number"
+            min={field.min}
+            max={field.max}
+            value={value}
+            onChange={(e) => setFieldValue(field.key, e.target.value)}
+          />
+        );
+      default: // "hex" and "text" are both free-form text inputs
+        return (
+          <input
+            key={field.key}
+            className={inputClass}
+            placeholder={field.label}
+            value={value}
+            onChange={(e) => setFieldValue(field.key, e.target.value)}
+          />
+        );
+    }
+  }
 
   return (
     <div className="bg-white border border-zinc-200 rounded-xl shadow-lg overflow-hidden min-w-64">
@@ -195,18 +225,18 @@ export function AddPeripheralPanel() {
 
       {open && (
         <div className="px-3 pb-3 space-y-3">
-          {/* ── Type selector ─────────────────────────────────────── */}
+          {/* ── Type selector (one button per registry entry) ─────── */}
           <div className="flex gap-1 flex-wrap">
-            {(["button", "timer", "sensor", "proximity", "potentiometer", "screen", "led", "seven-segment-display"] as PeripheralType[]).map((t) => (
+            {PERIPHERAL_REGISTRY.map((def) => (
               <button
-                key={t}
-                onClick={() => applyPreset(t)}
-                className={`flex-1 min-w-15 px-2 py-1 rounded-md text-[10px] font-medium capitalize transition-colors ${form.peripheralType === t
+                key={def.type}
+                onClick={() => applyPreset(def)}
+                className={`flex-1 min-w-15 px-2 py-1 rounded-md text-[10px] font-medium capitalize transition-colors ${form.peripheralType === def.type
                   ? "bg-indigo-100 text-indigo-700"
                   : "bg-zinc-100 text-zinc-500 hover:bg-zinc-200"
                   }`}
               >
-                {t}
+                {def.type}
               </button>
             ))}
           </div>
@@ -220,7 +250,7 @@ export function AddPeripheralPanel() {
               onChange={(e) => setForm({ ...form, name: e.target.value })}
             />
             <div className="flex gap-1.5">
-              {form.peripheralType !== "screen" && form.peripheralType !== "led" && (
+              {selectedDef.kind === "input" && (
                 <input
                   className={inputClass}
                   placeholder="Handler (hex)"
@@ -242,150 +272,8 @@ export function AddPeripheralPanel() {
               />
             </div>
 
-            {/* Timer-specific */}
-            {form.peripheralType === "timer" && (
-              <input
-                className={inputClass}
-                placeholder="Interval (ticks)"
-                type="number"
-                min={1}
-                value={form.interval}
-                onChange={(e) =>
-                  setForm({ ...form, interval: e.target.value })
-                }
-              />
-            )}
-
-            {/* Sensor-specific */}
-            {form.peripheralType === "sensor" && (
-              <input
-                className={inputClass}
-                placeholder="Threshold"
-                type="number"
-                min={0}
-                value={form.threshold}
-                onChange={(e) =>
-                  setForm({ ...form, threshold: e.target.value })
-                }
-              />
-            )}
-
-            {/* Proximity-specific */}
-            {form.peripheralType === "proximity" && (
-              <input
-                className={inputClass}
-                placeholder="Radius (px)"
-                type="number"
-                min={1}
-                value={form.radius}
-                onChange={(e) =>
-                  setForm({ ...form, radius: e.target.value })
-                }
-              />
-            )}
-
-            {/* Potentiometer-specific */}
-            {form.peripheralType === "potentiometer" && (
-              <input
-                className={inputClass}
-                placeholder="Max resistance"
-                type="number"
-                min={1}
-                value={form.maxResistance}
-                onChange={(e) =>
-                  setForm({ ...form, maxResistance: e.target.value })
-                }
-              />
-            )}
-
-            {/* Screen-specific */}
-            {form.peripheralType === "screen" && (
-              <>
-                <div className="flex gap-1.5">
-                  <input
-                    className={inputClass}
-                    placeholder="Width"
-                    type="number"
-                    min={4}
-                    max={64}
-                    value={form.gridWidth}
-                    onChange={(e) =>
-                      setForm({ ...form, gridWidth: e.target.value })
-                    }
-                  />
-                  <input
-                    className={inputClass}
-                    placeholder="Height"
-                    type="number"
-                    min={2}
-                    max={16}
-                    value={form.gridHeight}
-                    onChange={(e) =>
-                      setForm({ ...form, gridHeight: e.target.value })
-                    }
-                  />
-                </div>
-                <input
-                  className={inputClass}
-                  placeholder="Source addr (hex)"
-                  value={form.sourceAddress}
-                  onChange={(e) =>
-                    setForm({ ...form, sourceAddress: e.target.value })
-                  }
-                />
-              </>
-            )}
-
-            {/* Screen-specific */}
-            {form.peripheralType === "seven-segment-display" && (
-              <>
-                <input
-                  className={inputClass}
-                  placeholder="Source addr (hex)"
-                  value={form.sourceAddress}
-                  onChange={(e) =>
-                    setForm({ ...form, sourceAddress: e.target.value })
-                  }
-                />
-              </>
-            )}
-
-            {/* LED-specific */}
-            {form.peripheralType === "led" && (
-              <>
-                <div className="flex items-center gap-2 rounded-md border border-zinc-200 bg-zinc-50 px-2 py-1.5">
-                  <label className="text-[11px] text-zinc-600">Color</label>
-                  <input
-                    type="color"
-                    value={form.ledColor}
-                    onChange={(e) => setForm({ ...form, ledColor: e.target.value })}
-                    className="h-6 w-10 cursor-pointer rounded border border-zinc-200 bg-white"
-                  />
-                  <span className="text-[10px] font-mono text-zinc-500 uppercase">{form.ledColor}</span>
-                </div>
-                <input
-                  className={inputClass}
-                  placeholder="Source addr (hex)"
-                  value={form.ledSourceAddress}
-                  onChange={(e) =>
-                    setForm({ ...form, ledSourceAddress: e.target.value })
-                  }
-                />
-                <div className="flex items-center gap-2 rounded-md border border-zinc-200 bg-zinc-50 px-2 py-1.5">
-                  <label className="text-[11px] text-zinc-600">Initial state</label>
-                  <select
-                    value={form.ledInitialLevel}
-                    onChange={(e) =>
-                      setForm({ ...form, ledInitialLevel: e.target.value as "LOW" | "HIGH" })
-                    }
-                    className="ml-auto px-2 py-1 rounded border border-zinc-200 bg-white text-[11px] text-zinc-700"
-                  >
-                    <option value="LOW">LOW</option>
-                    <option value="HIGH">HIGH</option>
-                  </select>
-                </div>
-              </>
-            )}
+            {/* Type-specific fields, straight from the registry */}
+            {selectedDef.fields.map(renderField)}
           </div>
 
           {/* ── Add button ────────────────────────────────────────── */}

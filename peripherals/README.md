@@ -31,6 +31,9 @@ Each CPU clock tick, the system calls `tick()` on every connected peripheral. If
 | `Potentiometer.peripheral.ts` | Potentiometer (Knob) | Input | Analog slider that writes a 0–255 value to a memory address |
 | `Screen.peripheral.ts` | Display Screen | Output | Reads from memory and renders a scrolling waveform visualization |
 | `LED.peripheral.ts` | LED Light | Output | Reads a memory byte and turns on (≥128) or off (<128) |
+| `SevenSegmentDisplay.peripheral.ts` | Seven-Segment Display | Output | Reads a memory byte and shows its digits on seven-segment units |
+
+Every one of these is registered in **`registry.ts`** — the single file that tells the server, the "Add Peripheral" panel, and the visualizer that a peripheral type exists.
 
 ### Input vs Output Peripherals
 
@@ -172,49 +175,45 @@ export class BuzzerPeripheral implements Peripheral {
 }
 ```
 
-### Step 3: Register It in the WebSocket Server
+### Step 3: Register It in the Registry
 
-Open `server/ws.ts` and make two changes:
-
-**1. Import your peripheral at the top of the file:**
+Open `peripherals/registry.ts` and add **one entry** to `PERIPHERAL_REGISTRY`:
 
 ```typescript
-import { BuzzerPeripheral } from "@/peripherals/Buzzer.peripheral";
+import { BuzzerPeripheral } from "./Buzzer.peripheral";
+
+// ... inside PERIPHERAL_REGISTRY:
+{
+  type: "buzzer",                 // unique key — used everywhere
+  defaultName: "Buzzer",
+  kind: "input",                  // "input" fires interrupts; "output" reads memory
+  handlerBase: 0x00D0,            // base ISR address (pick an unused range)
+  defaultPriority: 2,
+  dataAddress: 0x0037,            // ISR counter byte — pick an unused address in the first 64 bytes
+  fields: [
+    // Config fields — these render automatically in the Add Peripheral panel
+    { key: "interval", label: "Interval (ticks)", input: "number", defaultValue: "8", min: 1 },
+  ],
+  create: (c) =>
+    new BuzzerPeripheral(c.id, c.name, c.handlerAddress, (c.interval as number) ?? 8, c.priority),
+},
 ```
 
-**2. Add a case to the `createPeripheral()` function:**
+**That's the whole integration.** The WebSocket server, the "Add Peripheral" panel (with your config fields), the auto-loaded ISR, and the visualizer layout all pick your peripheral up from this one entry.
 
-```typescript
-case "buzzer": {
-  const interval = (msg.interval as number) ?? 8;
-  return new BuzzerPeripheral(id, name, handlerAddress, interval, priority);
-}
-```
+A few notes:
 
-**3. (Optional) Add a data address for ISR counter tracking:**
-
-In the `DATA_ADDRS` object, add an entry if you want the ISR to track a counter:
-
-```typescript
-const DATA_ADDRS: Record<string, number> = {
-  timer:     0x003D,
-  sensor:    0x003E,
-  button:    0x003F,
-  proximity: 0x0039,
-  potentiometer: 0x003B,
-  buzzer:    0x0037,  // Pick an unused address in the first 64 bytes
-};
-```
+- `fields` supports `"number"`, `"hex"` (parsed base-16, great for memory addresses), `"text"`, `"color"`, and `"select"` (provide `options`). Each parsed value arrives in `create()` under its `key`.
+- If your peripheral needs memory access, `create` receives it as the second argument: `create: (c, memory) => new YourPeripheral(..., memory)`.
+- Add an optional `applyUpdates` function if the UI should be able to change settings live (see the `timer` or `screen` entries for examples).
+- Make sure your `toJSON()` meta includes `type: "buzzer"` (matching your registry key) — that's how the frontend and server know which type an instance is.
 
 ### Step 4: (Optional) Add a Frontend Node
 
-If you want a custom visual for your peripheral in the visualizer:
+Peripherals render with the generic `PeripheralNode` by default — it shows the name, status, and priority automatically. If you want a custom visual:
 
 1. Create `app/_components/BuzzerNode.component.tsx`
-2. Register it as a node type in `app/page.tsx`
-3. Add it to the `AddPeripheralPanel` component
-
-For simple peripherals, the default `PeripheralNode` component works fine — it shows the name, status, and priority automatically.
+2. Add one entry to `NODE_TYPES` in `app/page.tsx`, keyed by your type: `buzzer: BuzzerNode`
 
 ### Step 5: Test It
 
