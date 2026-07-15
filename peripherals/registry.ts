@@ -27,6 +27,7 @@ import { ScreenPeripheral } from "./Screen.peripheral";
 import { PotentiometerPeripheral } from "./Potentiometer.peripheral";
 import { LEDPeripheral } from "./LED.peripheral";
 import { SevenSegmentDisplay } from "./SevenSegmentDisplay.peripheral";
+import { HardDrive } from "./HardDrive.peripheral";
 
 // ─── Definition Types ───────────────────────────────────────────────────────
 
@@ -258,6 +259,26 @@ export const PERIPHERAL_REGISTRY: PeripheralDefinition[] = [
       const display = p as SevenSegmentDisplay;
       if (typeof u.sourceAddress === "number") display.setSourceAddress(u.sourceAddress);
       if (u.clear === true) display.clearScreen();
+    },
+  },
+  {
+    type: "hard-drive",
+    defaultName: "Hard Drive",
+    kind: "input",
+    handlerBase: 0x00d0,
+    defaultPriority: 2,
+    fields: [],
+    create: (c, memory) =>
+      new HardDrive(c.id, c.name, c.handlerAddress, c.priority, memory),
+    applyUpdates: (p, u) => {
+      const drive = p as HardDrive;
+      if (
+        typeof u.sector === "number" &&
+        typeof u.offset === "number" &&
+        typeof u.value === "number"
+      ) {
+        drive.writeCell(u.sector, u.offset, u.value);
+      }
     },
   },
 ];
