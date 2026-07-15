@@ -336,7 +336,50 @@ assert(ev.interruptsFired >= 1, `tick 3: ≥1 interrupt fired (got ${ev.interrup
 
 // After the ISR executes (LOAD R1 + IRET will take 2 more ticks), verify the interrupt was handled
 // For now, just confirm the system didn't crash and the interrupt was dispatched
-console.log(`  Cycle ${ev.cycle}: interruptsFired=${ev.interruptsFired}, pending=${ev.pendingInterrupts}`);
+console.log(
+  `  Cycle ${ev.cycle}: interruptsFired=${ev.interruptsFired}, pending=${ev.pendingInterrupts}`,
+);
+
+// ─── 14. CPU + Hard Drive — write via memory-mapped registers ──────────────
+
+header("14. Hard Drive — CPU-driven WRITE");
+
+const hdMem = new MemoryService();
+hdMem.write(0x080, 3); //     sector
+hdMem.write(0x081, 5); //     offset
+hdMem.write(0x082, 0x42); //  value to write
+hdMem.write(0x083, CMD.WRITE);
+
+// prettier-ignore
+hdMem.loadProgram(0x000, [
+  0x01, 0x00, 0x00, 0x80, // LOAD  R0, 0x080   R0 = sector
+  0x02, 0x00, 0x03, 0xf1, // STORE R0, 0x3F1   SECTOR
+  0x01, 0x01, 0x00, 0x81, // LOAD  R1, 0x081   R1 = offset
+  0x02, 0x01, 0x03, 0xf2, // STORE R1, 0x3F2   OFFSET
+  0x01, 0x02, 0x00, 0x82, // LOAD  R2, 0x082   R2 = value
+  0x02, 0x02, 0x03, 0xf3, // STORE R2, 0x3F3   DATA
+  0x01, 0x03, 0x00, 0x83, // LOAD  R3, 0x083   R3 = CMD.WRITE
+  0x02, 0x03, 0x03, 0xf0, // STORE R3, 0x3F0   CMD  ← triggers seek
+  0xff, 0x00, 0x00, 0x00, // HALT
+]);
+
+const hdCpu = new CPUService(hdMem);
+const drive = new HardDrive("hd1", "Hard Drive", 0x00d0, 2, hdMem);
+hdCpu.registerPeripheral(drive);
+hdCpu.connectPeripheral("hd1");
+
+// Run until the drive reports completion via its interrupt
+let hdCompleted = false;
+for (let i = 0; i < 15 && !hdCompleted; i++) {
+  const ev = hdCpu.step();
+  if (ev.interruptSources.includes("hd1")) hdCompleted = true;
+}
+
+assert(hdCompleted, "hd1 fired a completion interrupt");
+assert(
+  (drive.toJSON().meta.storage as number[][])[3][5] === 0x42,
+  "storage[3][5] = 0x42",
+);
 
 // ─── Done ───────────────────────────────────────────────────────────────────
 
