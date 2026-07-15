@@ -11,6 +11,7 @@ import { SensorPeripheral } from "@/peripherals/Sensor.peripheral";
 import { PotentiometerPeripheral } from "@/peripherals/Potentiometer.peripheral";
 import { LEDPeripheral } from "@/peripherals/LED.peripheral";
 import { PeripheralStatus } from "@/types/peripheral.types";
+import { HardDrive, CMD } from "@/peripherals/HardDrive.peripheral";
 
 function header(title: string) {
   console.log(`\n${"═".repeat(60)}`);
@@ -49,7 +50,10 @@ assert(btn.status === PeripheralStatus.IDLE, "after firing → back to IDLE");
 assert(btn.tick() === null, "second tick without trigger → null (one-shot)");
 
 btn.disconnect();
-assert(btn.status === PeripheralStatus.DISCONNECTED, "after disconnect → DISCONNECTED");
+assert(
+  btn.status === PeripheralStatus.DISCONNECTED,
+  "after disconnect → DISCONNECTED",
+);
 
 // ─── 2. Button — toJSON ────────────────────────────────────────────────────
 
@@ -62,7 +66,10 @@ assert(snap.id === "btn1", "snapshot id");
 assert(snap.name === "Red Button", "snapshot name");
 assert(snap.priority === 0, "snapshot priority");
 assert(snap.handlerAddress === 0x100, "snapshot handlerAddress");
-assert((snap.meta as { armed: boolean }).armed === true, "snapshot meta.armed = true");
+assert(
+  (snap.meta as { armed: boolean }).armed === true,
+  "snapshot meta.armed = true",
+);
 btn.disconnect();
 
 // ─── 3. Timer Peripheral ───────────────────────────────────────────────────
@@ -111,7 +118,11 @@ assert(timer.tick() === null, "tick after setInterval → counter=1, no fire");
 assert(timer.tick() !== null, "tick → counter=2, fires");
 
 let tmrCaught = false;
-try { new TimerPeripheral("x", "x", 0, 0); } catch { tmrCaught = true; }
+try {
+  new TimerPeripheral("x", "x", 0, 0);
+} catch {
+  tmrCaught = true;
+}
 assert(tmrCaught, "interval=0 throws RangeError");
 
 timer.disconnect();
@@ -166,7 +177,16 @@ sensor.disconnect();
 header("8. Potentiometer — value change debounce + normalization");
 
 const potMem = new MemoryService();
-const pot = new PotentiometerPeripheral("pot1", "Dial", 0x320, 100, 2, potMem, 0x003A, 2);
+const pot = new PotentiometerPeripheral(
+  "pot1",
+  "Dial",
+  0x320,
+  100,
+  2,
+  potMem,
+  0x003a,
+  2,
+);
 
 pot.connect();
 pot.setResistance(50);
@@ -176,7 +196,10 @@ const potInt = pot.tick();
 assert(potInt !== null, "tick 2 after value change → interrupt");
 assert(potInt!.source === "pot1", "potentiometer interrupt source");
 assert(potInt!.handlerAddress === 0x320, "potentiometer handler address");
-assert(potMem.read(0x003A) === 128, "normalized 50/100 mapped to 128 in register");
+assert(
+  potMem.read(0x003a) === 128,
+  "normalized 50/100 mapped to 128 in register",
+);
 
 pot.setResistance(50);
 assert(pot.tick() === null, "same value does not queue new interrupt");
@@ -184,8 +207,14 @@ assert(pot.tick() === null, "same value does not queue new interrupt");
 pot.setMaxResistance(200);
 pot.setResistance(100);
 pot.tick();
-assert(pot.tick() !== null, "new value after max change still fires with debounce");
-assert(pot.getNormalizedValue() === 128, "normalized remains half-scale at 100/200");
+assert(
+  pot.tick() !== null,
+  "new value after max change still fires with debounce",
+);
+assert(
+  pot.getNormalizedValue() === 128,
+  "normalized remains half-scale at 100/200",
+);
 
 pot.disconnect();
 
@@ -194,21 +223,37 @@ pot.disconnect();
 header("9. LED — memory-driven output without interrupts");
 
 const ledMem = new MemoryService();
-ledMem.write(0x003A, 200);
-const led = new LEDPeripheral("led1", "Status LED", 0, "#22c55e", ledMem, 0x003A);
+ledMem.write(0x003a, 200);
+const led = new LEDPeripheral(
+  "led1",
+  "Status LED",
+  0,
+  "#22c55e",
+  ledMem,
+  0x003a,
+);
 
 led.connect();
 const ledInt = led.tick();
 assert(ledInt === null, "LED tick never emits interrupts");
-assert(led.getCurrentMa() > 10, "LED enters high-current state on high output entry");
+assert(
+  led.getCurrentMa() > 10,
+  "LED enters high-current state on high output entry",
+);
 assert(led.getBrightness() > 180, "LED brightness rises with high current");
 
-ledMem.write(0x003A, 20);
+ledMem.write(0x003a, 20);
 led.tick();
-assert(led.getCurrentMa() < 5, "LED enters low-current state on low output entry");
+assert(
+  led.getCurrentMa() < 5,
+  "LED enters low-current state on low output entry",
+);
 assert(led.getBrightness() < 80, "LED brightness drops with low current");
 
-assert((led.toJSON().meta.color as string) === "#22c55e", "LED snapshot keeps create-time color");
+assert(
+  (led.toJSON().meta.color as string) === "#22c55e",
+  "LED snapshot keeps create-time color",
+);
 
 led.disconnect();
 
@@ -233,12 +278,18 @@ assert(mgr.getConnected().length === 2, "2 connected");
 // Trigger button, tick all
 mgr.trigger("btn-a");
 const interrupts1 = mgr.tickAll();
-assert(interrupts1.length === 1, "tickAll: 1 interrupt (button fired, timer counter=1)");
+assert(
+  interrupts1.length === 1,
+  "tickAll: 1 interrupt (button fired, timer counter=1)",
+);
 assert(interrupts1[0].source === "btn-a", "interrupt from button");
 
 // Tick again → timer at counter=2 → fires
 const interrupts2 = mgr.tickAll();
-assert(interrupts2.length === 1, "tickAll: 1 interrupt (timer fires at interval=2)");
+assert(
+  interrupts2.length === 1,
+  "tickAll: 1 interrupt (timer fires at interval=2)",
+);
 assert(interrupts2[0].source === "tmr-a", "interrupt from timer");
 
 // Unregister
@@ -248,7 +299,11 @@ assert(!mgr.has("btn-a"), "btn-a removed");
 
 // Duplicate registration throws
 let dupCaught = false;
-try { mgr.register(t); } catch { dupCaught = true; }
+try {
+  mgr.register(t);
+} catch {
+  dupCaught = true;
+}
 assert(dupCaught, "duplicate register throws");
 
 // ─── 11. PeripheralManager — events ────────────────────────────────────────
@@ -303,14 +358,26 @@ cpuMem.write(0x081, 77);
 
 // Main program: LOAD R0, JMP 0x004 (spin loop)
 cpuMem.loadProgram(0x000, [
-  0x01, 0x00, 0x00, 0x80, // LOAD R0, 0x080
-  0x05, 0x00, 0x00, 0x04, // JMP 0x004
+  0x01,
+  0x00,
+  0x00,
+  0x80, // LOAD R0, 0x080
+  0x05,
+  0x00,
+  0x00,
+  0x04, // JMP 0x004
 ]);
 
 // ISR at 0x100
 cpuMem.loadProgram(0x100, [
-  0x01, 0x01, 0x00, 0x81, // LOAD R1, 0x081
-  0xfe, 0x00, 0x00, 0x00, // IRET
+  0x01,
+  0x01,
+  0x00,
+  0x81, // LOAD R1, 0x081
+  0xfe,
+  0x00,
+  0x00,
+  0x00, // IRET
 ]);
 
 const cpu = new CPUService(cpuMem);
@@ -332,7 +399,10 @@ cpu.triggerPeripheral("cpu-btn");
 
 // Tick 3: peripheral ticks, button interrupt dispatched, then cores execute
 ev = cpu.step();
-assert(ev.interruptsFired >= 1, `tick 3: ≥1 interrupt fired (got ${ev.interruptsFired})`);
+assert(
+  ev.interruptsFired >= 1,
+  `tick 3: ≥1 interrupt fired (got ${ev.interruptsFired})`,
+);
 
 // After the ISR executes (LOAD R1 + IRET will take 2 more ticks), verify the interrupt was handled
 // For now, just confirm the system didn't crash and the interrupt was dispatched
