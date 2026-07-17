@@ -273,11 +273,12 @@ export const PERIPHERAL_REGISTRY: PeripheralDefinition[] = [
     applyUpdates: (p, u) => {
       const drive = p as HardDrive;
       if (
+        typeof u.track === "number" &&
         typeof u.sector === "number" &&
         typeof u.offset === "number" &&
         typeof u.value === "number"
       ) {
-        drive.writeCell(u.sector, u.offset, u.value);
+        drive.writeCell(u.track, u.sector, u.offset, u.value);
       }
     },
   },
