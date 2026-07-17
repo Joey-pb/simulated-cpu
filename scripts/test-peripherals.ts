@@ -415,21 +415,23 @@ console.log(
 header("14. Hard Drive — CPU-driven WRITE");
 
 const hdMem = new MemoryService();
-hdMem.write(0x080, 3); //     sector
-hdMem.write(0x081, 5); //     offset
-hdMem.write(0x082, 0x42); //  value to write
-hdMem.write(0x083, CMD.WRITE);
+hdMem.write(0x080, 2); //     track
+hdMem.write(0x081, 3); //     sector
+hdMem.write(0x082, 5); //     offset
+hdMem.write(0x083, 0x42); //  value to write
+hdMem.write(0x084, CMD.WRITE);
 
-// prettier-ignore
 hdMem.loadProgram(0x000, [
-  0x01, 0x00, 0x00, 0x80, // LOAD  R0, 0x080   R0 = sector
-  0x02, 0x00, 0x03, 0xf1, // STORE R0, 0x3F1   SECTOR
-  0x01, 0x01, 0x00, 0x81, // LOAD  R1, 0x081   R1 = offset
-  0x02, 0x01, 0x03, 0xf2, // STORE R1, 0x3F2   OFFSET
-  0x01, 0x02, 0x00, 0x82, // LOAD  R2, 0x082   R2 = value
-  0x02, 0x02, 0x03, 0xf3, // STORE R2, 0x3F3   DATA
-  0x01, 0x03, 0x00, 0x83, // LOAD  R3, 0x083   R3 = CMD.WRITE
-  0x02, 0x03, 0x03, 0xf0, // STORE R3, 0x3F0   CMD  ← triggers seek
+  0x01, 0x00, 0x00, 0x80, // LOAD  R0, 0x080   R0 = track
+  0x02, 0x00, 0x03, 0xf1, // STORE R0, 0x3F1   TRACK
+  0x01, 0x01, 0x00, 0x81, // LOAD  R1, 0x081   R1 = sector
+  0x02, 0x01, 0x03, 0xf2, // STORE R1, 0x3F2   SECTOR
+  0x01, 0x02, 0x00, 0x82, // LOAD  R2, 0x082   R2 = offset
+  0x02, 0x02, 0x03, 0xf3, // STORE R2, 0x3F3   OFFSET
+  0x01, 0x03, 0x00, 0x83, // LOAD  R3, 0x083   R3 = value
+  0x02, 0x03, 0x03, 0xf4, // STORE R3, 0x3F4   DATA
+  0x01, 0x00, 0x00, 0x84, // LOAD  R0, 0x084   R0 = CMD.WRITE (reuse R0)
+  0x02, 0x00, 0x03, 0xf0, // STORE R0, 0x3F0   CMD  ← triggers seek
   0xff, 0x00, 0x00, 0x00, // HALT
 ]);
 
@@ -440,15 +442,19 @@ hdCpu.connectPeripheral("hd1");
 
 // Run until the drive reports completion via its interrupt
 let hdCompleted = false;
-for (let i = 0; i < 15 && !hdCompleted; i++) {
+for (let i = 0; i < 20 && !hdCompleted; i++) {
   const ev = hdCpu.step();
   if (ev.interruptSources.includes("hd1")) hdCompleted = true;
 }
 
 assert(hdCompleted, "hd1 fired a completion interrupt");
+
+// Flat index = track * (sectorsPerTrack * bytesPerSector) + sector * bytesPerSector + offset
+// track=2, sector=3, offset=5 → 2*16*16 + 3*16 + 5 = 565
+const hdIndex = 2 * 16 * 16 + 3 * 16 + 5;
 assert(
-  (drive.toJSON().meta.storage as number[][])[3][5] === 0x42,
-  "storage[3][5] = 0x42",
+  (drive.toJSON().meta.diskStorage as number[])[hdIndex] === 0x42,
+  `diskStorage[${hdIndex}] (track=2, sector=3, offset=5) = 0x42`,
 );
 
 // ─── Done ───────────────────────────────────────────────────────────────────
