@@ -8,11 +8,17 @@
  * and a trigger button for button-type peripherals.
  */
 
-import { useCallback, useRef, type PointerEvent as ReactPointerEvent } from "react";
+import {
+  useCallback,
+  useRef,
+  useState,
+  type PointerEvent as ReactPointerEvent,
+} from "react";
 import { Handle, Position, type NodeProps } from "@xyflow/react";
 import { useSimulation } from "@/app/_modules/SimulationProvider.module";
 import { getPeripheralColor } from "@/app/_utils/peripheralColors";
 import type { PeripheralSnapshot } from "@/types/peripheral.types";
+import { CMD, STATUS } from "@/peripherals/HardDrive.peripheral";
 
 // ─── Debounced Update Hook ──────────────────────────────────────────────────
 
@@ -25,7 +31,7 @@ const DEBOUNCE_MS = 150;
  * latest value for each key is sent.
  */
 function useDebouncedUpdate(
-  updatePeripheral: (id: string, updates: Record<string, unknown>) => void
+  updatePeripheral: (id: string, updates: Record<string, unknown>) => void,
 ) {
   const pending = useRef<Record<string, Record<string, unknown>>>({});
   const timers = useRef<Record<string, ReturnType<typeof setTimeout>>>({});
@@ -43,7 +49,7 @@ function useDebouncedUpdate(
         delete timers.current[id];
       }, DEBOUNCE_MS);
     },
-    [updatePeripheral]
+    [updatePeripheral],
   );
 }
 
@@ -73,7 +79,9 @@ function StatusBadge({ status }: { status: string }) {
 
   return (
     <span className="flex items-center gap-1 text-[10px] text-zinc-600">
-      <span className={`inline-block w-2 h-2 rounded-full ${colours.dot} ${pulse}`} />
+      <span
+        className={`inline-block w-2 h-2 rounded-full ${colours.dot} ${pulse}`}
+      />
       {status}
     </span>
   );
@@ -89,14 +97,23 @@ function stopPropagation(e: ReactPointerEvent) {
 // ─── Inline Config Controls ─────────────────────────────────────────────────
 
 /** Detect peripheral type from the meta keys present. */
-function detectType(meta: Record<string, unknown>): "sensor" | "timer" | "button" | "proximity" | "screen" | "unknown" {
+function detectType(
+  meta: Record<string, unknown>,
+):
+  | "sensor"
+  | "timer"
+  | "button"
+  | "proximity"
+  | "screen"
+  | "hard-drive"
+  | "unknown" {
   if ("threshold" in meta && "currentValue" in meta) return "sensor";
   if ("interval" in meta && "counter" in meta) return "timer";
   if ("armed" in meta) return "button";
   if ("radius" in meta && "currentDistance" in meta) return "proximity";
-  if ("pixels" in meta && "width" in meta) {
-    return "screen"
-  };
+  if ("pixels" in meta && "width" in meta) return "screen";
+  if ("diskStorage" in meta && "cmdAddress" in meta) return "hard-drive";
+
   return "unknown";
 }
 
@@ -122,11 +139,21 @@ interface ConfigRowProps {
 }
 
 /** A single row: label, slider, and numeric input. */
-function ConfigRow({ label, value, min = 0, max = 255, step = 1, onChange, color }: ConfigRowProps) {
+function ConfigRow({
+  label,
+  value,
+  min = 0,
+  max = 255,
+  step = 1,
+  onChange,
+  color,
+}: ConfigRowProps) {
   return (
     <div className="space-y-0.5">
       <div className="flex items-center justify-between">
-        <span className={`text-[10px] font-medium ${color ?? "text-zinc-500"}`}>{label}</span>
+        <span className={`text-[10px] font-medium ${color ?? "text-zinc-500"}`}>
+          {label}
+        </span>
         <input
           type="number"
           className={INPUT_CLASS}
@@ -170,12 +197,12 @@ function SensorControls({
 
   const onValueChange = useCallback(
     (v: number) => updatePeripheral(peripheralId, { currentValue: v }),
-    [peripheralId, updatePeripheral]
+    [peripheralId, updatePeripheral],
   );
 
   const onThresholdChange = useCallback(
     (v: number) => updatePeripheral(peripheralId, { threshold: v }),
-    [peripheralId, updatePeripheral]
+    [peripheralId, updatePeripheral],
   );
 
   return (
@@ -229,7 +256,7 @@ function TimerControls({
 
   const onIntervalChange = useCallback(
     (v: number) => updatePeripheral(peripheralId, { interval: Math.max(1, v) }),
-    [peripheralId, updatePeripheral]
+    [peripheralId, updatePeripheral],
   );
 
   return (
@@ -248,7 +275,9 @@ function TimerControls({
         <div className="flex-1 h-1.5 rounded-full bg-zinc-100 overflow-hidden">
           <div
             className="h-full bg-emerald-300 transition-all duration-150"
-            style={{ width: `${interval > 0 ? (counter / interval) * 100 : 0}%` }}
+            style={{
+              width: `${interval > 0 ? (counter / interval) * 100 : 0}%`,
+            }}
           />
         </div>
         <span className="text-[9px] font-mono text-zinc-500 tabular-nums">
@@ -259,11 +288,227 @@ function TimerControls({
   );
 }
 
+// ─── Hard Drive Controls ────────────────────────────────────────────────────
+
+const CMD_LABELS: Record<CMD, string> = {
+  [CMD.NOP]: "NOP",
+  [CMD.READ]: "READ",
+  [CMD.WRITE]: "WRITE",
+};
+
+const STATUS_LABELS: Record<STATUS, string> = {
+  [STATUS.IDLE]: "IDLE",
+  [STATUS.BUSY]: "BUSY",
+  [STATUS.DONE]: "DONE",
+  [STATUS.ERROR]: "ERROR",
+};
+
+const STATUS_COLORS: Record<STATUS, string> = {
+  [STATUS.IDLE]: "text-zinc-400",
+  [STATUS.BUSY]: "text-amber-500",
+  [STATUS.DONE]: "text-green-500",
+  [STATUS.ERROR]: "text-red-500",
+};
+
+export function HardDriveControls({
+  peripheralId,
+  meta,
+  updatePeripheralAction,
+}: {
+  peripheralId: string;
+  meta: Record<string, unknown>;
+  updatePeripheralAction: (
+    id: string,
+    updates: Record<string, unknown>,
+  ) => void;
+}) {
+  const [selectedTrack, setSelectedTrack] = useState(0);
+  const [editingCell, setEditingCell] = useState<{
+    sector: number;
+    offset: number;
+  } | null>(null);
+  const [editValue, setEditValue] = useState("");
+
+  const diskStorage = (meta.diskStorage as number[]) ?? [];
+  const driveStatus = (meta.driveStatus as number) ?? 0;
+  const currentCmd = (meta.currentCmd as number) ?? 0;
+  const currentTrack = (meta.currentTrack as number) ?? 0;
+  const currentSector = (meta.currentSector as number) ?? 0;
+  const currentOffset = (meta.currentOffset as number) ?? 0;
+  const currentData = (meta.currentData as number) ?? 0;
+  const trackCount = (meta.trackCount as number) ?? 16;
+  const sectorsPerTrack = (meta.sectorsPerTrack as number) ?? 16;
+  const bytesPerSector = (meta.bytesPerSector as number) ?? 16;
+  const cmdAddress = (meta.cmdAddress as number) ?? 0x3f0;
+  const trackAddress = (meta.trackAddress as number) ?? 0x3f1;
+  const sectorAddress = (meta.sectorAddress as number) ?? 0x3f2;
+  const offsetAddress = (meta.offsetAddress as number) ?? 0x3f3;
+  const dataAddress = (meta.dataAddress as number) ?? 0x3f4;
+  const statusAddress = (meta.statusAddress as number) ?? 0x3f5;
+
+  function hex2(n: number): string {
+    return n.toString(16).padStart(2, "0").toUpperCase();
+  }
+
+  function hexAddr(n: number): string {
+    return `0x${n.toString(16).toUpperCase()}`;
+  }
+
+  // Flat index into diskStorage: track-major, then sector, then offset —
+  // mirrors getDiskIndex() in HardDrive.peripheral.ts.
+  function cellValue(track: number, sector: number, offset: number): number {
+    const index =
+      track * sectorsPerTrack * bytesPerSector +
+      sector * bytesPerSector +
+      offset;
+    return diskStorage[index] ?? 0;
+  }
+
+  function startEdit(sector: number, offset: number): void {
+    setEditingCell({ sector, offset });
+    setEditValue(hex2(cellValue(selectedTrack, sector, offset)));
+  }
+
+  function commitEdit(): void {
+    if (!editingCell) return;
+    const parsed = parseInt(editValue, 16);
+    if (!isNaN(parsed)) {
+      updatePeripheralAction(peripheralId, {
+        track: selectedTrack,
+        sector: editingCell.sector,
+        offset: editingCell.offset,
+        value: Math.min(255, Math.max(0, parsed)),
+      });
+    }
+    setEditingCell(null);
+  }
+
+  return (
+    <div className="mt-1.5 pt-1.5 border-t border-zinc-100 space-y-1.5">
+      {/* Register status — two-column label/value grid for all six control registers */}
+      <div className="grid grid-cols-2 gap-x-2 gap-y-0.5 text-[9px] font-mono">
+        <span className="text-zinc-400">CMD</span>
+        <span className="text-zinc-600">
+          {hex2(currentCmd)} {CMD_LABELS[currentCmd as CMD] ?? "?"}
+        </span>
+
+        <span className="text-zinc-400">TRACK</span>
+        <span className="text-zinc-600">{currentTrack}</span>
+
+        <span className="text-zinc-400">SECTOR</span>
+        <span className="text-zinc-600">{currentSector}</span>
+
+        <span className="text-zinc-400">OFFSET</span>
+        <span className="text-zinc-600">{currentOffset}</span>
+
+        <span className="text-zinc-400">DATA</span>
+        {/* currentData = memory.read(DATA): what the CPU wrote before a WRITE,
+            or what the drive placed there after a READ */}
+        <span className="text-zinc-600">{hex2(currentData)}</span>
+
+        <span className="text-zinc-400">STATUS</span>
+        <span
+          className={`font-semibold ${STATUS_COLORS[driveStatus as STATUS] ?? "text-zinc-400"}`}
+        >
+          {STATUS_LABELS[driveStatus as STATUS] ?? "?"}
+        </span>
+      </div>
+
+      {/* Address reference */}
+      <div className="text-[9px] text-zinc-400 font-mono leading-relaxed">
+        CMD {hexAddr(cmdAddress)} · TRK {hexAddr(trackAddress)} · SECT{" "}
+        {hexAddr(sectorAddress)} · OFF {hexAddr(offsetAddress)} · DATA{" "}
+        {hexAddr(dataAddress)} · STAT {hexAddr(statusAddress)}
+      </div>
+
+      {/* Track selector */}
+      <div className="space-y-0.5">
+        <div className="flex items-center justify-between">
+          <span className="text-[10px] font-bold text-zinc-600">Track</span>
+          <span className="text-[10px] font-mono text-zinc-600">
+            {selectedTrack} / {trackCount - 1}
+          </span>
+        </div>
+        <input
+          type="range"
+          className={SLIDER_CLASS}
+          value={selectedTrack}
+          min={0}
+          max={Math.max(0, trackCount - 1)}
+          step={1}
+          onChange={(e) => setSelectedTrack(Number(e.target.value))}
+        />
+      </div>
+
+      {/* Disk grid — rows = sectors, columns = byte offsets, for whichever
+          track is currently selected by the slider above.
+          The outer Array.from iterates sectors, the inner iterates offsets.
+          .flat() collapses the array-of-arrays into a single list of cells for React. */}
+      <div className="overflow-x-auto">
+        <div
+          className="grid gap-px bg-zinc-100 border border-zinc-200 rounded text-[8px] font-mono"
+          style={{
+            gridTemplateColumns: `repeat(${bytesPerSector}, minmax(0, 1fr))`,
+          }}
+        >
+          {Array.from({ length: sectorsPerTrack }, (_, s) =>
+            Array.from({ length: bytesPerSector }, (_, o) => (
+              <div
+                key={`${s}-${o}`}
+                className={`flex items-center justify-center h-5 px-1 py-0.5 cursor-pointer transition-colors ${
+                  selectedTrack === currentTrack &&
+                  s === currentSector &&
+                  o === currentOffset &&
+                  driveStatus !== 0
+                    ? "bg-amber-200 text-amber-800"
+                    : "bg-white text-zinc-500 hover:bg-indigo-50"
+                }`}
+                title={`T${selectedTrack}:S${s}:O${o} = 0x${hex2(cellValue(selectedTrack, s, o))}`}
+                onClick={() => startEdit(s, o)}
+              >
+                {editingCell?.sector === s && editingCell?.offset === o ? (
+                  // Inline hex editor — shown when this cell is being edited
+                  <input
+                    autoFocus
+                    className="w-full h-full text-center bg-indigo-100 text-indigo-800 outline-none text-[8px] font-mono"
+                    value={editValue}
+                    maxLength={2}
+                    onChange={(e) => setEditValue(e.target.value)}
+                    onBlur={commitEdit}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter") commitEdit();
+                      if (e.key === "Escape") setEditingCell(null);
+                    }}
+                  />
+                ) : (
+                  // Normal display — two uppercase hex digits
+                  hex2(cellValue(selectedTrack, s, o))
+                )}
+              </div>
+            )),
+          ).flat()}
+        </div>
+      </div>
+
+      <div className="text-[8px] text-zinc-400">
+        {trackCount} tracks × {sectorsPerTrack} sectors × {bytesPerSector} bytes
+        · click any cell to edit
+      </div>
+    </div>
+  );
+}
+
 // ─── Peripheral Node ────────────────────────────────────────────────────────
 
 /** React Flow custom node rendering a single peripheral device card. */
 export function PeripheralNode({ data }: NodeProps) {
-  const { triggerPeripheral, removePeripheral, updatePeripheral, interruptSources, peripherals } = useSimulation();
+  const {
+    triggerPeripheral,
+    removePeripheral,
+    updatePeripheral,
+    interruptSources,
+    peripherals,
+  } = useSimulation();
   const debouncedUpdate = useDebouncedUpdate(updatePeripheral);
   const peripheral = data.peripheral as PeripheralSnapshot | undefined;
 
@@ -282,7 +527,7 @@ export function PeripheralNode({ data }: NodeProps) {
   const pColor = getPeripheralColor(
     pIndex !== -1
       ? pIndex
-      : [...peripheral.id].reduce((h, c) => h + c.charCodeAt(0), 0)
+      : [...peripheral.id].reduce((h, c) => h + c.charCodeAt(0), 0),
   );
 
   const pType = detectType(peripheral.meta);
@@ -292,12 +537,14 @@ export function PeripheralNode({ data }: NodeProps) {
   return (
     <div
       className={`bg-white border border-zinc-200 ${pColor.borderL} border-l-4 rounded-lg
-        shadow-sm px-3 py-2 min-w-48 max-w-56 text-xs text-zinc-700 transition-all duration-200`}
+        shadow-sm px-3 py-2 min-w-64 max-w-96 text-xs text-zinc-700 transition-all duration-200`}
     >
       {/* Title + color swatch + Delete */}
       <div className="flex items-center justify-between mb-1 gap-1">
         <div className="flex items-center gap-1.5 min-w-0">
-          <span className={`inline-block w-2.5 h-2.5 rounded-sm shrink-0 ${pColor.bg}`} />
+          <span
+            className={`inline-block w-2.5 h-2.5 rounded-sm shrink-0 ${pColor.bg}`}
+          />
           <div className="font-semibold text-[11px] truncate">
             {peripheral.name}
           </div>
@@ -322,11 +569,17 @@ export function PeripheralNode({ data }: NodeProps) {
 
       {/* Handler address */}
       <div className="text-[10px] text-zinc-400">
-        Handler: <span className="font-mono text-zinc-600">{hex(peripheral.handlerAddress)}</span>
+        Handler:{" "}
+        <span className="font-mono text-zinc-600">
+          {hex(peripheral.handlerAddress)}
+        </span>
       </div>
 
       {/* Type-specific live controls — block pointer events from reaching React Flow */}
-      <div className="nopan nodrag nowheel" onPointerDownCapture={stopPropagation}>
+      <div
+        className="nopan nodrag nowheel"
+        onPointerDownCapture={stopPropagation}
+      >
         {pType === "sensor" && (
           <SensorControls
             peripheralId={peripheral.id}
@@ -340,6 +593,14 @@ export function PeripheralNode({ data }: NodeProps) {
             peripheralId={peripheral.id}
             meta={peripheral.meta}
             updatePeripheral={debouncedUpdate}
+          />
+        )}
+
+        {pType === "hard-drive" && (
+          <HardDriveControls
+            peripheralId={peripheral.id}
+            meta={peripheral.meta}
+            updatePeripheralAction={debouncedUpdate}
           />
         )}
 
