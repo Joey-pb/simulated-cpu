@@ -354,7 +354,7 @@ export function HardDriveControls({
     return `0x${n.toString(16).toUpperCase()}`;
   }
 
-  // Flat index into diskStorage: track-major, then sector, then offset —
+  // Flat index into diskStorage: track, then sector, then offset —
   // mirrors getDiskIndex() in HardDrive.peripheral.ts.
   function cellValue(track: number, sector: number, offset: number): number {
     const index =
@@ -443,7 +443,7 @@ export function HardDriveControls({
       {/* Disk grid — rows = sectors, columns = byte offsets, for whichever
           track is currently selected by the slider above.
           The outer Array.from iterates sectors, the inner iterates offsets.
-          .flat() collapses the array-of-arrays into a single list of cells for React. */}
+          .flat() collapses the array-of-arrays into a single list of cells. */}
       <div className="overflow-x-auto">
         <div
           className="grid gap-px bg-zinc-100 border border-zinc-200 rounded text-[8px] font-mono"

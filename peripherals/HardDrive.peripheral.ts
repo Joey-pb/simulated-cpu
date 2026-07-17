@@ -8,27 +8,27 @@ import {
 
 // ─── Control register addresses ────────────────────────────────────────────
 export const REG = {
-  CMD: 0x3f0, //                      CPU writes a command here
-  TRACK: 0x3f1, //                    CPU writes the target track number here (0 -15)
-  SECTOR: 0x3f2, //                   CPU writes the target sector number here (0-15)
-  OFFSET: 0x3f3, //                   CPU writes the byte offset within the sector here (0-15)
-  DATA: 0x3f4, //                     CPU writes or reads here
-  STATUS: 0x3f5, //                   Drive writes its current state here so the CPU can check the ISR
+  CMD: 0x3f0, //                      CPU writes a command here.
+  TRACK: 0x3f1, //                    CPU writes the target track number here (0 -15).
+  SECTOR: 0x3f2, //                   CPU writes the target sector number here (0-15).
+  OFFSET: 0x3f3, //                   CPU writes the byte offset within the sector here (0-15).
+  DATA: 0x3f4, //                     CPU writes or reads here.
+  STATUS: 0x3f5, //                   Drive writes its current state here so the CPU can check the ISR.
 };
 
 // ─── CMD register values ───────────────────────────────────────────────────
 export enum CMD {
-  NOP = 0x00, //                      No operation - drive is idle
-  READ = 0x01, //                     Read storage [sector][offset] into DATA register
-  WRITE = 0x02, //                    Write DATA register into storage [sector][offset]
+  NOP = 0x00, //                      No operation - drive is idle.
+  READ = 0x01, //                     Read storage in DATA register.
+  WRITE = 0x02, //                    Write DATA register into storage.
 }
 
 // ─── STATUS register values ────────────────────────────────────────────────
 export enum STATUS {
-  IDLE = 0x01, //                     Drive is ready to accept a command
-  BUSY = 0x02, //                     Drive is seeking
-  DONE = 0x03, //                     Last operation completed
-  ERROR = 0x04, //                    Bad sector/offset
+  IDLE = 0x01, //                     Drive is ready to accept a command.
+  BUSY = 0x02, //                     Drive is seeking.
+  DONE = 0x03, //                     Last operation completed.
+  ERROR = 0x04, //                    Bad track/sector/offset.
 }
 
 // ─── Disk Geometry ─────────────────────────────────────────────────────────
@@ -88,9 +88,8 @@ export class HardDrive implements Peripheral<HardDriveMeta> {
   constructor(
     id: string,
     name: string,
-    handlerAddress: number = 0x00d0, // Default ISR address
-
-    priority: number = 2, // Medium priority by default
+    handlerAddress: number = 0x00d0, // Default ISR address.
+    priority: number = 2, // Medium priority by default.
     memory: MemoryService,
   ) {
     this.id = id;
@@ -117,7 +116,7 @@ export class HardDrive implements Peripheral<HardDriveMeta> {
     this.busyCounter = 0; //                          Cancel any seek in progress.
     this.pendingCmd = CMD.NOP; //                     Clear any pending command.
     this.memory.write(REG.CMD, CMD.NOP); //           Clear the command register.
-    this.memory.write(REG.STATUS, STATUS.IDLE); //    Report idle to the CPU
+    this.memory.write(REG.STATUS, STATUS.IDLE); //    Report idle to the CPU.
   }
 
   tick(): Interrupt | null {
@@ -146,8 +145,10 @@ export class HardDrive implements Peripheral<HardDriveMeta> {
       return null;
     }
 
-    // Validate the sector and offset. If either one is out of
-    // range, flag an error.
+    /* 
+    Validate the sector and offset. If any are out of
+    range, flag an error. 
+    */
     const track = this.memory.read(REG.TRACK);
     const sector = this.memory.read(REG.SECTOR);
     const offset = this.memory.read(REG.OFFSET);
@@ -169,8 +170,10 @@ export class HardDrive implements Peripheral<HardDriveMeta> {
     return null;
   }
 
-  // Executes a READ or WRITE after the seek delay has completed.
-  // Returns an Interrupt to notify the CPU that the operation is complete.
+  /* 
+  Executes a READ or WRITE after the seek delay has completed.
+  Returns an Interrupt to notify the CPU that the operation is complete. 
+  */
   private executeCommand(cmd: number): Interrupt | null {
     // Read the registers.
     const track = this.memory.read(REG.TRACK);
@@ -179,11 +182,9 @@ export class HardDrive implements Peripheral<HardDriveMeta> {
 
     if (cmd === CMD.READ) {
       // Copy from internal storage into DATA register.
-      // this.memory.write(REG.DATA, this.storage[sector][offset]);
       this.readDisk(track, sector, offset);
     } else if (cmd === CMD.WRITE) {
       // Copy from DATA register into internal storage.
-      // this.storage[sector][offset] = this.memory.read(REG.DATA);
       this.writeToDisk(track, sector, offset);
     }
 
@@ -235,7 +236,7 @@ export class HardDrive implements Peripheral<HardDriveMeta> {
       offset < BYTES_PER_SECTOR
     ) {
       const index = this.getDiskIndex(track, sector, offset);
-      this.diskStorage[index] = value & 0xff; // & 0xFF clamps to one byte (0–255)
+      this.diskStorage[index] = value & 0xff; // & 0xFF clamps to one byte (0–255).
     }
   }
 
