@@ -9,10 +9,11 @@ import {
 // ─── Control register addresses ────────────────────────────────────────────
 export const REG = {
   CMD: 0x3f0, //                      CPU writes a command here
-  SECTOR: 0x3f1, //                   CPU writes the target sector number here (0-15)
-  OFFSET: 0x3f2, //                   CPU writes the byte offset within the sector here
-  DATA: 0x3f3, //                     CPU writes or reads here
-  STATUS: 0x3f4, //                   Drive writes its current state here so the CPU can check the ISR
+  TRACK: 0x3f1, //                    CPU writes the target track number here (0 -15)
+  SECTOR: 0x3f2, //                   CPU writes the target sector number here (0-15)
+  OFFSET: 0x3f3, //                   CPU writes the byte offset within the sector here (0-15)
+  DATA: 0x3f4, //                     CPU writes or reads here
+  STATUS: 0x3f5, //                   Drive writes its current state here so the CPU can check the ISR
 };
 
 // ─── CMD register values ───────────────────────────────────────────────────
@@ -31,22 +32,30 @@ export enum STATUS {
 }
 
 // ─── Disk Geometry ─────────────────────────────────────────────────────────
-const SECTORS = 16; //                How many sectors the disk has
-const BYTES_PER_SECTOR = 16; //       How many bytes fit in one sector. Total storage: 16 x 16 = 256bytes
+// 16 tracks x 16 sectors x 16 bytes/sector = 4KiB hard disk.
+const TRACK_COUNT = 16; //            How many tracks the disk has.
+const SECTORS_PER_TRACK = 16; //      How many sectors the disk has.
+const BYTES_PER_SECTOR = 16; //       How many bytes fit in one sector.
 
-const SEEK_TICKS = 2; //              Simulated seek latency so the BUSY state is visible in the UI
+const TOTAL_BYTES = TRACK_COUNT * SECTORS_PER_TRACK * BYTES_PER_SECTOR;
+
+const SEEK_TICKS = 2; //              Simulated seek latency so the BUSY state is visible in the UI.
 
 // ─── Meta type ─────────────────────────────────────────────────────────────
 export type HardDriveMeta = {
   type: string;
-  sectors: number;
+  trackCount: number;
+  sectorsPerTrack: number;
   bytesPerSector: number;
-  storage: number[][];
+  totalBytes: number;
+  diskStorage: number[];
   cmdAddress: number;
+  trackAddress: number;
   sectorAddress: number;
   offsetAddress: number;
   dataAddress: number;
   statusAddress: number;
+  currentTrack: number;
   currentSector: number;
   currentOffset: number;
   currentCmd: number;
@@ -63,8 +72,8 @@ export class HardDrive implements Peripheral<HardDriveMeta> {
   private handlerAddress: number;
   private readonly memory: MemoryService;
 
-  // Array of bytes indexed [sector][offset]
-  private storage: number[][];
+  // Flat disk storage.
+  private diskStorage = new Uint8Array(TOTAL_BYTES);
 
   /*
   Countdown timer for simulated seek delay.
@@ -90,11 +99,6 @@ export class HardDrive implements Peripheral<HardDriveMeta> {
     this.priority = priority;
     this.status = PeripheralStatus.DISCONNECTED;
     this.memory = memory;
-
-    // Build the 16x16 storage grid.
-    this.storage = Array.from({ length: SECTORS }, () =>
-      new Array(BYTES_PER_SECTOR).fill(0),
-    );
   }
 
   connect(): void {
@@ -127,6 +131,7 @@ export class HardDrive implements Peripheral<HardDriveMeta> {
 
       // Still seeking: do nothing.
       if (this.busyCounter > 0) return null;
+
       // No longer seeking, run the command.
       return this.executeCommand(this.pendingCmd);
     }
@@ -143,9 +148,14 @@ export class HardDrive implements Peripheral<HardDriveMeta> {
 
     // Validate the sector and offset. If either one is out of
     // range, flag an error.
+    const track = this.memory.read(REG.TRACK);
     const sector = this.memory.read(REG.SECTOR);
     const offset = this.memory.read(REG.OFFSET);
-    if (sector >= SECTORS || offset >= BYTES_PER_SECTOR) {
+    if (
+      track >= TRACK_COUNT ||
+      sector >= SECTORS_PER_TRACK ||
+      offset >= BYTES_PER_SECTOR
+    ) {
       this.memory.write(REG.STATUS, STATUS.ERROR);
       this.memory.write(REG.CMD, CMD.NOP);
       return null;
@@ -163,15 +173,18 @@ export class HardDrive implements Peripheral<HardDriveMeta> {
   // Returns an Interrupt to notify the CPU that the operation is complete.
   private executeCommand(cmd: number): Interrupt | null {
     // Read the registers.
+    const track = this.memory.read(REG.TRACK);
     const sector = this.memory.read(REG.SECTOR);
     const offset = this.memory.read(REG.OFFSET);
 
     if (cmd === CMD.READ) {
       // Copy from internal storage into DATA register.
-      this.memory.write(REG.DATA, this.storage[sector][offset]);
+      // this.memory.write(REG.DATA, this.storage[sector][offset]);
+      this.readDisk(track, sector, offset);
     } else if (cmd === CMD.WRITE) {
       // Copy from DATA register into internal storage.
-      this.storage[sector][offset] = this.memory.read(REG.DATA);
+      // this.storage[sector][offset] = this.memory.read(REG.DATA);
+      this.writeToDisk(track, sector, offset);
     }
 
     // Update registers and reset internal state.
@@ -189,10 +202,40 @@ export class HardDrive implements Peripheral<HardDriveMeta> {
     };
   }
 
+  private readDisk(track: number, sector: number, offset: number): void {
+    const index = this.getDiskIndex(track, sector, offset);
+    const data = this.diskStorage[index];
+    this.memory.write(REG.DATA, data);
+  }
+
+  private writeToDisk(track: number, sector: number, offset: number): void {
+    const index = this.getDiskIndex(track, sector, offset);
+    const data = this.memory.read(REG.DATA);
+    this.diskStorage[index] = data;
+  }
+
+  private getDiskIndex(track: number, sector: number, offset: number): number {
+    return (
+      track * SECTORS_PER_TRACK * BYTES_PER_SECTOR + // Move to track.
+      sector * BYTES_PER_SECTOR + //                    Move to sector.
+      offset //                                         Move to offset.
+    );
+  }
+
   // Direct UI write / CPU bypass
-  writeCell(sector: number, offset: number, value: number): void {
-    if (sector < SECTORS && offset < BYTES_PER_SECTOR) {
-      this.storage[sector][offset] = value & 0xff; // & 0xFF clamps to one byte (0–255)
+  writeCell(
+    track: number,
+    sector: number,
+    offset: number,
+    value: number,
+  ): void {
+    if (
+      track < TRACK_COUNT &&
+      sector < SECTORS_PER_TRACK &&
+      offset < BYTES_PER_SECTOR
+    ) {
+      const index = this.getDiskIndex(track, sector, offset);
+      this.diskStorage[index] = value & 0xff; // & 0xFF clamps to one byte (0–255)
     }
   }
 
@@ -205,16 +248,20 @@ export class HardDrive implements Peripheral<HardDriveMeta> {
       handlerAddress: this.handlerAddress,
       meta: {
         type: "hard-drive",
-        sectors: SECTORS,
+        trackCount: TRACK_COUNT,
+        sectorsPerTrack: SECTORS_PER_TRACK,
         bytesPerSector: BYTES_PER_SECTOR,
-        storage: this.storage.map((row) => [...row]),
+        totalBytes: TOTAL_BYTES,
+        diskStorage: Array.from(this.diskStorage),
         // UI Display
+        trackAddress: REG.TRACK,
         cmdAddress: REG.CMD,
         sectorAddress: REG.SECTOR,
         offsetAddress: REG.OFFSET,
         dataAddress: REG.DATA,
         statusAddress: REG.STATUS,
         // Live register values
+        currentTrack: this.memory.read(REG.TRACK),
         currentSector: this.memory.read(REG.SECTOR),
         currentOffset: this.memory.read(REG.OFFSET),
         currentCmd: this.memory.read(REG.CMD),
