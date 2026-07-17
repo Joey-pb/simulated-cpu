@@ -157,8 +157,7 @@ export class HardDrive implements Peripheral<HardDriveMeta> {
       sector >= SECTORS_PER_TRACK ||
       offset >= BYTES_PER_SECTOR
     ) {
-      this.memory.write(REG.STATUS, STATUS.ERROR);
-      this.memory.write(REG.CMD, CMD.NOP);
+      this.haltOnError();
       return null;
     }
 
@@ -221,6 +220,11 @@ export class HardDrive implements Peripheral<HardDriveMeta> {
       sector * BYTES_PER_SECTOR + //                    Move to sector.
       offset //                                         Move to offset.
     );
+  }
+
+  private haltOnError(): void {
+    this.memory.write(REG.STATUS, STATUS.ERROR);
+    this.memory.write(REG.CMD, CMD.NOP);
   }
 
   // Direct UI write / CPU bypass
