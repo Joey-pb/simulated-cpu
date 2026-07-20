@@ -1,3 +1,32 @@
+/**
+ * @module HardDrive
+ *
+ * Concrete {@link Peripheral} implementation: a memory-mapped simulated hard
+ * disk with 16 tracks × 16 sectors × 16 bytes/sector (4 KiB total storage).
+ *
+ * **Command-register model:**
+ * The CPU controls the drive entirely through six memory-mapped registers at
+ * 0x3F0–0x3F5. To issue a command, the CPU writes the target TRACK, SECTOR,
+ * and OFFSET into their respective registers, places any write payload in DATA,
+ * then writes READ or WRITE into CMD. On the next tick the drive begins seeking.
+ *
+ * **Seek latency:**
+ * After a command is issued, the drive spends `SEEK_TICKS` (2) ticks in the
+ * BUSY state before executing the operation. This simulates mechanical seek
+ * delay and keeps the BUSY state visible in the UI long enough to observe.
+ *
+ * **Interrupts:**
+ * When an operation completes, the drive sets STATUS → DONE and fires a single
+ * interrupt at the handler address. The CPU's ISR can then read the DATA
+ * register for a READ result or verify that a WRITE completed. No ISR counter
+ * is loaded for this peripheral type (no `dataAddress` in the registry entry).
+ *
+ * **Direct pre-load:**
+ * {@link HardDrive.writeCell} bypasses the command-register flow and writes
+ * directly into internal storage. The UI panel uses this to populate disk
+ * contents without going through the CPU.
+ */
+
 import { MemoryService } from "@/services/Memory.service";
 import {
   Interrupt,
@@ -75,11 +104,11 @@ export class HardDrive implements Peripheral<HardDriveMeta> {
   // Flat disk storage.
   private diskStorage = new Uint8Array(TOTAL_BYTES);
 
-  /*
-  Countdown timer for simulated seek delay.
-  Set to SEEK_TICKS when a command starts.
-  Reaches 0 when operation executes.
-  */
+  /**
+   * Countdown timer for simulated seek delay.
+   * Set to SEEK_TICKS when a command starts.
+   * Reaches 0 when operation executes.
+   */
   private busyCounter: number = 0;
 
   // Stores the current command to be executed once busyCounter expires.
@@ -145,10 +174,10 @@ export class HardDrive implements Peripheral<HardDriveMeta> {
       return null;
     }
 
-    /* 
-    Validate the track, sector, and offset. If any are out of
-    range, flag an error. 
-    */
+    /**
+     * Validate the track, sector, and offset. If any are out of
+     * range, flag an error.
+     */
     const track = this.memory.read(REG.TRACK);
     const sector = this.memory.read(REG.SECTOR);
     const offset = this.memory.read(REG.OFFSET);
@@ -169,10 +198,10 @@ export class HardDrive implements Peripheral<HardDriveMeta> {
     return null;
   }
 
-  /* 
-  Executes a READ or WRITE after the seek delay has completed.
-  Returns an Interrupt to notify the CPU that the operation is complete. 
-  */
+  /**
+   * Executes a READ or WRITE after the seek delay has completed.
+   * Returns an Interrupt to notify the CPU that the operation is complete.
+   */
   private executeCommand(cmd: number): Interrupt | null {
     // Read the registers.
     const track = this.memory.read(REG.TRACK);
