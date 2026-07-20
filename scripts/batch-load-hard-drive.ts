@@ -56,7 +56,7 @@ interface Broadcast {
   message?: string;
 }
 
-enum ISA {
+enum OpCode {
   LOAD = 0x01,
   STORE = 0x02,
   HALT = 0xff,
@@ -90,17 +90,17 @@ function assembleWrite(cmd: WriteCommand): { data: number[]; code: number[] } {
     * [OPCODE, REGISTER, ADDRESS_HIGH, ADDRESS_LOW]
     * 
     */
-    ISA.LOAD,   0x00,   hi(SCRATCH + 0),  lo(SCRATCH + 0),      // LOAD R0, track
-    ISA.STORE,  0x00,   hi(REG.TRACK),    lo(REG.TRACK),        // STORE RO, TRACK
-    ISA.LOAD,   0x01,   hi(SCRATCH + 1),  lo(SCRATCH + 1),      // LOAD R1, sector
-    ISA.STORE,  0x01,   hi(REG.SECTOR),   lo(REG.SECTOR),       // STORE R1, SECTOR
-    ISA.LOAD,   0x02,   hi(SCRATCH + 2),  lo(SCRATCH + 2),      // LOAD R2, offset
-    ISA.STORE,  0x02,   hi(REG.OFFSET),   lo(REG.OFFSET),       // STORE R2, OFFSET
-    ISA.LOAD,   0x03,   hi(SCRATCH + 3),  lo(SCRATCH + 3),      // LOAD R3, data
-    ISA.STORE,  0x03,   hi(REG.DATA),     lo(REG.DATA),         // STORE R3, DATA
-    ISA.LOAD,   0x00,   hi(SCRATCH + 4),  lo(SCRATCH + 4),      // LOAD R0, CMD <- triggers seek
-    ISA.STORE,  0x00,   hi(REG.CMD),      lo(REG.CMD),
-    ISA.HALT,   0x00,   0x00,             0x00,                 // HALT
+    OpCode.LOAD,   0x00,   hi(SCRATCH + 0),  lo(SCRATCH + 0),      // LOAD R0, track
+    OpCode.STORE,  0x00,   hi(REG.TRACK),    lo(REG.TRACK),        // STORE RO, TRACK
+    OpCode.LOAD,   0x01,   hi(SCRATCH + 1),  lo(SCRATCH + 1),      // LOAD R1, sector
+    OpCode.STORE,  0x01,   hi(REG.SECTOR),   lo(REG.SECTOR),       // STORE R1, SECTOR
+    OpCode.LOAD,   0x02,   hi(SCRATCH + 2),  lo(SCRATCH + 2),      // LOAD R2, offset
+    OpCode.STORE,  0x02,   hi(REG.OFFSET),   lo(REG.OFFSET),       // STORE R2, OFFSET
+    OpCode.LOAD,   0x03,   hi(SCRATCH + 3),  lo(SCRATCH + 3),      // LOAD R3, data
+    OpCode.STORE,  0x03,   hi(REG.DATA),     lo(REG.DATA),         // STORE R3, DATA
+    OpCode.LOAD,   0x00,   hi(SCRATCH + 4),  lo(SCRATCH + 4),      // LOAD R0, CMD <- triggers seek
+    OpCode.STORE,  0x00,   hi(REG.CMD),      lo(REG.CMD),
+    OpCode.HALT,   0x00,   0x00,             0x00,                 // HALT
   ];
 
   return { data, code };
