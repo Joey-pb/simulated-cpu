@@ -149,6 +149,10 @@ export class HardDrive implements Peripheral<HardDriveMeta> {
     Validate the track, sector, and offset. If any are out of
     range, flag an error. 
     */
+    /* 
+    Validate the sector and offset. If any are out of
+    range, flag an error. 
+    */
     const track = this.memory.read(REG.TRACK);
     const sector = this.memory.read(REG.SECTOR);
     const offset = this.memory.read(REG.OFFSET);
