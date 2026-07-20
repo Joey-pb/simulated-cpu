@@ -452,40 +452,45 @@ export function HardDriveControls({
           }}
         >
           {Array.from({ length: sectorsPerTrack }, (_, s) =>
-            Array.from({ length: bytesPerSector }, (_, o) => (
-              <div
-                key={`${s}-${o}`}
-                className={`flex items-center justify-center h-5 px-1 py-0.5 cursor-pointer transition-colors ${
-                  selectedTrack === currentTrack &&
-                  s === currentSector &&
-                  o === currentOffset &&
-                  driveStatus !== 0
-                    ? "bg-amber-200 text-amber-800"
-                    : "bg-white text-zinc-500 hover:bg-indigo-50"
-                }`}
-                title={`T${selectedTrack}:S${s}:O${o} = 0x${hex2(cellValue(selectedTrack, s, o))}`}
-                onClick={() => startEdit(s, o)}
-              >
-                {editingCell?.sector === s && editingCell?.offset === o ? (
-                  // Inline hex editor — shown when this cell is being edited
-                  <input
-                    autoFocus
-                    className="w-full h-full text-center bg-indigo-100 text-indigo-800 outline-none text-[8px] font-mono"
-                    value={editValue}
-                    maxLength={2}
-                    onChange={(e) => setEditValue(e.target.value)}
-                    onBlur={commitEdit}
-                    onKeyDown={(e) => {
-                      if (e.key === "Enter") commitEdit();
-                      if (e.key === "Escape") setEditingCell(null);
-                    }}
-                  />
-                ) : (
-                  // Normal display — two uppercase hex digits
-                  hex2(cellValue(selectedTrack, s, o))
-                )}
-              </div>
-            )),
+            Array.from({ length: bytesPerSector }, (_, o) => {
+              const value = cellValue(selectedTrack, s, o);
+              const isSet = value !== 0;
+
+              return (
+                <div
+                  key={`${s}-${o}`}
+                  className={`flex items-center justify-center h-5 px-1 py-0.5 cursor-pointer transition-colors ${
+                    selectedTrack === currentTrack &&
+                    s === currentSector &&
+                    o === currentOffset &&
+                    driveStatus !== 0
+                      ? "bg-amber-200 text-amber-800"
+                      : `bg-white hover:bg-indigo-50 ${isSet ? "text-green-600" : "text-zinc-500"}`
+                  }`}
+                  title={`T${selectedTrack}:S${s}:O${o} = 0x${hex2(value)}`}
+                  onClick={() => startEdit(s, o)}
+                >
+                  {editingCell?.sector === s && editingCell?.offset === o ? (
+                    // Inline hex editor — shown when this cell is being edited
+                    <input
+                      autoFocus
+                      className="w-full h-full text-center bg-indigo-100 text-indigo-800 outline-none text-[8px] font-mono"
+                      value={editValue}
+                      maxLength={2}
+                      onChange={(e) => setEditValue(e.target.value)}
+                      onBlur={commitEdit}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter") commitEdit();
+                        if (e.key === "Escape") setEditingCell(null);
+                      }}
+                    />
+                  ) : (
+                    // Normal display — two uppercase hex digits
+                    hex2(value)
+                  )}
+                </div>
+              );
+            }),
           ).flat()}
         </div>
       </div>
