@@ -92,6 +92,15 @@ export type HardDriveMeta = {
   currentData: number;
 };
 
+// ─── Interfaces ─────────────────────────────────────────────────────────────
+
+interface DiskAddress {
+  track: number,
+  sector: number,
+  offset: number,
+}
+
+
 export class HardDrive implements Peripheral<HardDriveMeta> {
   readonly id: string;
   readonly name: string;
@@ -204,16 +213,18 @@ export class HardDrive implements Peripheral<HardDriveMeta> {
    */
   private executeCommand(cmd: number): Interrupt | null {
     // Read the registers.
-    const track = this.memory.read(REG.TRACK);
-    const sector = this.memory.read(REG.SECTOR);
-    const offset = this.memory.read(REG.OFFSET);
+    const address: DiskAddress = {
+      track: this.memory.read(REG.TRACK),
+      sector: this.memory.read(REG.SECTOR),
+      offset: this.memory.read(REG.OFFSET),
+    }
 
     if (cmd === CMD.READ) {
       // Copy from internal storage into DATA register.
-      this.readDisk(track, sector, offset);
+      this.readDisk(address);
     } else if (cmd === CMD.WRITE) {
       // Copy from DATA register into internal storage.
-      this.writeToDisk(track, sector, offset);
+      this.writeToDisk(address);
     }
 
     // Update registers and reset internal state.
@@ -231,23 +242,23 @@ export class HardDrive implements Peripheral<HardDriveMeta> {
     };
   }
 
-  private readDisk(track: number, sector: number, offset: number): void {
-    const index = this.getDiskIndex(track, sector, offset);
+  private readDisk(address: DiskAddress): void {
+    const index = this.getDiskIndex(address);
     const data = this.diskStorage[index];
     this.memory.write(REG.DATA, data);
   }
 
-  private writeToDisk(track: number, sector: number, offset: number): void {
-    const index = this.getDiskIndex(track, sector, offset);
+  private writeToDisk(address: DiskAddress): void {
+    const index = this.getDiskIndex(address);
     const data = this.memory.read(REG.DATA);
     this.diskStorage[index] = data;
   }
 
-  private getDiskIndex(track: number, sector: number, offset: number): number {
+  private getDiskIndex(address: DiskAddress): number {
     return (
-      track * SECTORS_PER_TRACK * BYTES_PER_SECTOR + // Move to track.
-      sector * BYTES_PER_SECTOR + //                    Move to sector.
-      offset //                                         Move to offset.
+      address.track * SECTORS_PER_TRACK * BYTES_PER_SECTOR + // Move to track.
+      address.sector * BYTES_PER_SECTOR + //                    Move to sector.
+      address.offset //                                         Move to offset.
     );
   }
 
@@ -268,7 +279,7 @@ export class HardDrive implements Peripheral<HardDriveMeta> {
       sector < SECTORS_PER_TRACK &&
       offset < BYTES_PER_SECTOR
     ) {
-      const index = this.getDiskIndex(track, sector, offset);
+      const index = this.getDiskIndex({track, sector, offset} as DiskAddress);
       this.diskStorage[index] = value & 0xff; // & 0xFF clamps to one byte (0–255).
     }
   }
