@@ -141,8 +141,7 @@ export class HardDrive implements Peripheral<HardDriveMeta> {
   connect(): void {
     if (this.status === PeripheralStatus.DISCONNECTED) {
       this.status = PeripheralStatus.IDLE;
-      this.memory.write(REG.CMD, CMD.NOP); //          Drive starts with no pending command.
-      this.memory.write(REG.STATUS, STATUS.IDLE); //   Reports itself as idle.
+      this.setDriveState(STATUS.IDLE, CMD.NOP); //          Drive starts idle with no pending command.
     }
   }
 
@@ -152,9 +151,7 @@ export class HardDrive implements Peripheral<HardDriveMeta> {
 
   trigger(): void {
     this.busyCounter = 0; //                          Cancel any seek in progress.
-    this.pendingCmd = CMD.NOP; //                     Clear any pending command.
-    this.memory.write(REG.CMD, CMD.NOP); //           Clear the command register.
-    this.memory.write(REG.STATUS, STATUS.IDLE); //    Report idle to the CPU.
+    this.setDriveState(STATUS.IDLE, CMD.NOP); //       Set status to idle, clear command register, clear pending command.
   }
 
   tick(): Interrupt | null {
@@ -187,14 +184,8 @@ export class HardDrive implements Peripheral<HardDriveMeta> {
      * Validate the track, sector, and offset. If any are out of
      * range, flag an error.
      */
-    const track = this.memory.read(REG.TRACK);
-    const sector = this.memory.read(REG.SECTOR);
-    const offset = this.memory.read(REG.OFFSET);
-    if (
-      track >= TRACK_COUNT ||
-      sector >= SECTORS_PER_TRACK ||
-      offset >= BYTES_PER_SECTOR
-    ) {
+    const address = this.currentAddress;
+    if (!this.isValidAddress(address)) {
       this.haltOnError();
       return null;
     }
@@ -213,11 +204,7 @@ export class HardDrive implements Peripheral<HardDriveMeta> {
    */
   private executeCommand(cmd: number): Interrupt | null {
     // Read the registers.
-    const address: DiskAddress = {
-      track: this.memory.read(REG.TRACK),
-      sector: this.memory.read(REG.SECTOR),
-      offset: this.memory.read(REG.OFFSET),
-    }
+    const address = this.currentAddress;
 
     if (cmd === CMD.READ) {
       // Copy from internal storage into DATA register.
@@ -228,10 +215,7 @@ export class HardDrive implements Peripheral<HardDriveMeta> {
     }
 
     // Update registers and reset internal state.
-    this.memory.write(REG.STATUS, STATUS.DONE); //    Tell CPU operation is completed.
-    this.memory.write(REG.CMD, CMD.NOP); //           Clear the command.
-    this.pendingCmd = CMD.NOP;
-    this.status = PeripheralStatus.IDLE; //           Set peripheral to idle.
+    this.setDriveState(STATUS.DONE, CMD.NOP); //    Tell CPU operation is completed.
 
     // Interrupt
     return {
@@ -241,6 +225,8 @@ export class HardDrive implements Peripheral<HardDriveMeta> {
       timestamp: Date.now(),
     };
   }
+
+  // ─── Helper Functions ─────────────────────────────────────────────────────────────
 
   private readDisk(address: DiskAddress): void {
     const index = this.getDiskIndex(address);
@@ -262,9 +248,33 @@ export class HardDrive implements Peripheral<HardDriveMeta> {
     );
   }
 
+  private setDriveState(status: STATUS, cmd: CMD = CMD.NOP): void {
+    this.memory.write(REG.STATUS, status);
+    this.memory.write(REG.CMD, cmd);
+    this.pendingCmd = cmd;
+  }
+
+  private get currentAddress(): DiskAddress {
+    return {
+      track: this.memory.read(REG.TRACK),
+      sector: this.memory.read(REG.SECTOR),
+      offset: this.memory.read(REG.OFFSET),
+    };
+  }
+
+  private isValidAddress(addr: DiskAddress): boolean {
+    return (
+      addr.track >= 0 &&
+      addr.track < TRACK_COUNT &&
+      addr.sector >= 0 &&
+      addr.sector < SECTORS_PER_TRACK &&
+      addr.offset >= 0 &&
+      addr.offset < BYTES_PER_SECTOR
+    );
+  }
+
   private haltOnError(): void {
-    this.memory.write(REG.STATUS, STATUS.ERROR);
-    this.memory.write(REG.CMD, CMD.NOP);
+    this.setDriveState(STATUS.ERROR, CMD.NOP);
   }
 
   // Direct UI write / CPU bypass
@@ -279,7 +289,7 @@ export class HardDrive implements Peripheral<HardDriveMeta> {
       sector < SECTORS_PER_TRACK &&
       offset < BYTES_PER_SECTOR
     ) {
-      const index = this.getDiskIndex({track, sector, offset} as DiskAddress);
+      const index = this.getDiskIndex({ track, sector, offset });
       this.diskStorage[index] = value & 0xff; // & 0xFF clamps to one byte (0–255).
     }
   }
