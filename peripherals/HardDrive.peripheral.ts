@@ -216,6 +216,7 @@ export class HardDrive implements Peripheral<HardDriveMeta> {
 
     // Update registers and reset internal state.
     this.setDriveState(STATUS.DONE, CMD.NOP); //    Tell CPU operation is completed.
+    this.status = PeripheralStatus.IDLE;
 
     // Interrupt
     return {
