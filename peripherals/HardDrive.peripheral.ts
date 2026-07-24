@@ -279,18 +279,9 @@ export class HardDrive implements Peripheral<HardDriveMeta> {
   }
 
   // Direct UI write / CPU bypass
-  writeCell(
-    track: number,
-    sector: number,
-    offset: number,
-    value: number,
-  ): void {
-    if (
-      track < TRACK_COUNT &&
-      sector < SECTORS_PER_TRACK &&
-      offset < BYTES_PER_SECTOR
-    ) {
-      const index = this.getDiskIndex({ track, sector, offset });
+  writeCell(address: DiskAddress, value: number): void {
+    if (this.isValidAddress(address)) {
+      const index = this.getDiskIndex(address);
       this.diskStorage[index] = value & 0xff; // & 0xFF clamps to one byte (0–255).
     }
   }
