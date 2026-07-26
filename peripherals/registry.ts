@@ -278,7 +278,10 @@ export const PERIPHERAL_REGISTRY: PeripheralDefinition[] = [
         typeof u.offset === "number" &&
         typeof u.value === "number"
       ) {
-        drive.writeCell(u.track, u.sector, u.offset, u.value);
+        drive.writeCell(
+          { track: u.track, sector: u.sector, offset: u.offset },
+          u.value,
+        );
       }
     },
   },
