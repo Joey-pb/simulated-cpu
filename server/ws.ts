@@ -12,6 +12,8 @@ import { MemoryService } from "@/services/Memory.service";
 import { CPUService } from "@/services/cpu/CPU.service";
 import { SchedulerType } from "@/types/cpu.types";
 import { getDefinition, type PeripheralConfig } from "@/peripherals/registry";
+import { HardDrive } from "@/peripherals/HardDrive.peripheral";
+import { HDDPersistenceService } from "@/services/hdd/HDDPersistence.service";
 import type { ClockEvent, CoreState, ProcessState } from "@/types/cpu.types";
 import type { PeripheralSnapshot, Peripheral } from "@/types/peripheral.types";
 import type { MemoryAccessEvent } from "@/types/memory.types";
@@ -48,6 +50,10 @@ interface BroadcastPayload {
 
 const memory = new MemoryService();
 const cpu = new CPUService(memory);
+
+// ─── HDD Persistence ───────────────────────────────────────────────────────────
+// Where the hard-drive's backing image lives on disk.
+const DISK_IMAGE_PATH = "./app/data/disk.img";
 
 // ─── ISR Programs ───────────────────────────────────────────────────────────
 
@@ -103,7 +109,7 @@ function createPeripheral(msg: IncomingMessage): Peripheral {
   const definition = getDefinition(peripheralType);
   if (!definition) {
     throw new Error(
-      `Unknown peripheral type: ${peripheralType} — is it registered in peripherals/registry.ts?`
+      `Unknown peripheral type: ${peripheralType} — is it registered in peripherals/registry.ts?`,
     );
   }
 
@@ -114,7 +120,26 @@ function createPeripheral(msg: IncomingMessage): Peripheral {
     handlerAddress: (msg.handlerAddress as number) ?? 0,
     priority: (msg.priority as number) ?? definition.defaultPriority ?? 0,
   };
-  return definition.create(config, memory);
+
+  const peripheral = definition.create(config, memory);
+
+  // Hard drives are the only peripheral type with persistence. The drive
+  // itself has no filesystem knowledge (see HardDrive.peripheral.ts) — it
+  // just exposes `storage` and `setPersistenceHandler`, which we wire up
+  // here to an HDDPersistenceService for this specific instance.
+  if (peripheralType === "hard-drive") {
+    const drive = peripheral as HardDrive;
+    // Constructing this loads any existing image into drive.storage
+    // in place, seeding the drive with previously saved contents.
+    const persistence = new HDDPersistenceService(
+      DISK_IMAGE_PATH,
+      drive.storage,
+    );
+    // Fired after every WRITE — see writeToDisk() in HardDrive.peripheral.ts.
+    drive.setPersistenceHandler(() => persistence.persistData());
+  }
+
+  return peripheral;
 }
 
 // ─── Helpers ────────────────────────────────────────────────────────────────

@@ -25,6 +25,14 @@
  * {@link HardDrive.writeCell} bypasses the command-register flow and writes
  * directly into internal storage. The UI panel uses this to populate disk
  * contents without going through the CPU.
+ * 
+ * **Persistence:**
+ * This class holds no reference to the filesystem. It exposes
+ * {@link HardDrive.storage}, a live reference to the backing buffer, and
+ * {@link HardDrive.setPersistenceHandler}, which registers a callback fired
+ * once after every WRITE completes. An external owner reads/writes
+ * `storage` and reacts to the callback to load or save a disk image; if no
+ * handler is registered, writes simply aren't persisted anywhere.
  */
 
 import { MemoryService } from "@/services/Memory.service";
@@ -93,13 +101,11 @@ export type HardDriveMeta = {
 };
 
 // ─── Interfaces ─────────────────────────────────────────────────────────────
-
 interface DiskAddress {
-  track: number,
-  sector: number,
-  offset: number,
+  track: number;
+  sector: number;
+  offset: number;
 }
-
 
 export class HardDrive implements Peripheral<HardDriveMeta> {
   readonly id: string;
@@ -112,6 +118,11 @@ export class HardDrive implements Peripheral<HardDriveMeta> {
 
   // Flat disk storage.
   private diskStorage = new Uint8Array(TOTAL_BYTES);
+
+  // Fired after each WRITE completes, if a persistence handler has been
+  // wired up (see setPersistenceHandler). Left undefined by default so
+  // this class stays filesystem-agnostic.
+  private onWrite?: (diskStorage: Uint8Array) => void;
 
   /**
    * Countdown timer for simulated seek delay.
@@ -150,8 +161,8 @@ export class HardDrive implements Peripheral<HardDriveMeta> {
   }
 
   trigger(): void {
-    this.busyCounter = 0; //                          Cancel any seek in progress.
-    this.setDriveState(STATUS.IDLE, CMD.NOP); //       Set status to idle, clear command register, clear pending command.
+    this.busyCounter = 0; //                            Cancel any seek in progress.
+    this.setDriveState(STATUS.IDLE, CMD.NOP); //        Set status to idle, clear command register, clear pending command.
   }
 
   tick(): Interrupt | null {
@@ -239,6 +250,7 @@ export class HardDrive implements Peripheral<HardDriveMeta> {
     const index = this.getDiskIndex(address);
     const data = this.memory.read(REG.DATA);
     this.diskStorage[index] = data;
+    this.onWrite?.(this.diskStorage);
   }
 
   private getDiskIndex(address: DiskAddress): number {
@@ -278,13 +290,33 @@ export class HardDrive implements Peripheral<HardDriveMeta> {
     this.setDriveState(STATUS.ERROR, CMD.NOP);
   }
 
+  /**
+   * Wires up a callback fired after every WRITE, so an external owner
+   * (e.g. server/ws.ts) can persist `diskStorage` without this class
+   * importing anything filesystem-related itself.
+   */
+  setPersistenceHandler(onWrite: (diskStorage: Uint8Array) => void): void {
+    this.onWrite = onWrite;
+  }
+
+  /**
+   * Live reference to the backing buffer. Callers use this to seed disk
+   * contents from a saved image and to read the current contents to save.
+   */
+  get storage(): Uint8Array {
+    return this.diskStorage;
+  }
+
   // Direct UI write / CPU bypass
   writeCell(address: DiskAddress, value: number): void {
     if (this.isValidAddress(address)) {
       const index = this.getDiskIndex(address);
       this.diskStorage[index] = value & 0xff; // & 0xFF clamps to one byte (0–255).
+      this.onWrite?.(this.diskStorage);
     }
   }
+
+  //TODO: Format HD
 
   toJSON(): PeripheralSnapshot<HardDriveMeta> {
     return {
