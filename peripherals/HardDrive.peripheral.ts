@@ -191,11 +191,18 @@ export class HardDrive implements Peripheral<HardDriveMeta> {
       return null;
     }
 
+    // Reject any command that isn't READ or WRITE.
+    if (cmd != CMD.READ && cmd != CMD.WRITE) {
+      this.haltOnError();
+      return null;
+    }
+
+    const address = this.currentAddress; // Read the current address.
+
     /**
      * Validate the track, sector, and offset. If any are out of
      * range, flag an error.
      */
-    const address = this.currentAddress;
     if (!this.isValidAddress(address)) {
       this.haltOnError();
       return null;
@@ -214,8 +221,16 @@ export class HardDrive implements Peripheral<HardDriveMeta> {
    * Returns an Interrupt to notify the CPU that the operation is complete.
    */
   private executeCommand(cmd: number): Interrupt | null {
-    // Read the registers.
-    const address = this.currentAddress;
+    const address = this.currentAddress; // Read the current address.
+
+    /**
+     * Validate the track, sector, and offset. If any are out of
+     * range, flag an error.
+     */
+    if (!this.isValidAddress(address)) {
+      this.haltOnError();
+      return null;
+    }
 
     if (cmd === CMD.READ) {
       // Copy from internal storage into DATA register.
@@ -309,14 +324,20 @@ export class HardDrive implements Peripheral<HardDriveMeta> {
 
   // Direct UI write / CPU bypass
   writeCell(address: DiskAddress, value: number): void {
+    if (!Number.isInteger(value) || value < 0 || value > 0xff) {
+      throw new RangeError(
+        `Value ${value} is out of range for a disk byte (0x00–0xFF)`,
+      );
+    }
     if (this.isValidAddress(address)) {
       const index = this.getDiskIndex(address);
-      this.diskStorage[index] = value & 0xff; // & 0xFF clamps to one byte (0–255).
+      this.diskStorage[index] = value;
       this.onWrite?.(this.diskStorage);
     }
   }
 
   formatDisk(): void {
+    if (this.busyCounter > 0) return;
     this.diskStorage.fill(0x00);
     this.onWrite?.(this.diskStorage);
   }

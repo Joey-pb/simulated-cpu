@@ -29,11 +29,18 @@ export class HDDPersistenceService {
     this.imagePath = imagePath;
     this.diskStorage = diskStorage;
 
-    if (existsSync(imagePath)) {
-      const savedData = readFileSync(imagePath);
-      if (savedData.length === diskStorage.length) {
-        this.diskStorage.set(savedData); // Seed the live buffer in place.
+    try {
+      if (existsSync(imagePath)) {
+        const savedData = readFileSync(imagePath);
+        if (savedData.length === diskStorage.length) {
+          this.diskStorage.set(savedData); // Seed the live buffer in place.
+        }
       }
+    } catch (err) {
+      console.error(
+        `[HDDPersistence] Failed to load "${imagePath}":`,
+        (err as Error).message,
+      );
     }
   }
 
