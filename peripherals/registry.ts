@@ -283,6 +283,9 @@ export const PERIPHERAL_REGISTRY: PeripheralDefinition[] = [
           u.value,
         );
       }
+      if (u.format === true) {
+        drive.formatDisk();
+      }
     },
   },
 ];

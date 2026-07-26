@@ -316,7 +316,10 @@ export class HardDrive implements Peripheral<HardDriveMeta> {
     }
   }
 
-  //TODO: Format HD
+  formatDisk(): void {
+    this.diskStorage.fill(0x00);
+    this.onWrite?.(this.diskStorage);
+  }
 
   toJSON(): PeripheralSnapshot<HardDriveMeta> {
     return {
