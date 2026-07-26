@@ -55,12 +55,19 @@ export function HardDriveControls({
   const trackCount = (meta.trackCount as number) ?? 16;
   const sectorsPerTrack = (meta.sectorsPerTrack as number) ?? 16;
   const bytesPerSector = (meta.bytesPerSector as number) ?? 16;
+  const totalBytes = (meta.totalBytes as number) ?? 0x3f0;
   const cmdAddress = (meta.cmdAddress as number) ?? 0x3f0;
   const trackAddress = (meta.trackAddress as number) ?? 0x3f1;
   const sectorAddress = (meta.sectorAddress as number) ?? 0x3f2;
   const offsetAddress = (meta.offsetAddress as number) ?? 0x3f3;
   const dataAddress = (meta.dataAddress as number) ?? 0x3f4;
   const statusAddress = (meta.statusAddress as number) ?? 0x3f5;
+
+  // Disk usage.
+  const usedBytes = diskStorage.reduce((n, b) => (b !== 0 ? n + 1 : n), 0);
+  const freeBytes = totalBytes - usedBytes;
+  const usedPct =
+    totalBytes > 0 ? Math.round((usedBytes / totalBytes) * 100) : 0;
 
   function hex2(n: number): string {
     return n.toString(16).padStart(2, "0").toUpperCase();
@@ -135,6 +142,30 @@ export function HardDriveControls({
         CMD {hexAddr(cmdAddress)} · TRK {hexAddr(trackAddress)} · SECT{" "}
         {hexAddr(sectorAddress)} · OFF {hexAddr(offsetAddress)} · DATA{" "}
         {hexAddr(dataAddress)} · STAT {hexAddr(statusAddress)}
+      </div>
+
+      <div className="text-[9px] text-zinc-400 font-mono leading-relaxed">
+        CMD {hexAddr(cmdAddress)} · TRK {hexAddr(trackAddress)} · SECT{" "}
+        {hexAddr(sectorAddress)} · OFF {hexAddr(offsetAddress)} · DATA{" "}
+        {hexAddr(dataAddress)} · STAT {hexAddr(statusAddress)}
+      </div>
+
+      {/* Space usage — nonzero bytes counted as "used" */}
+      <div className="space-y-0.5">
+        <div className="flex items-center justify-between text-[9px] font-mono text-zinc-500">
+          <span>
+            {usedBytes} / {totalBytes} bytes used
+          </span>
+          <span>
+            {usedPct}% · {freeBytes} free
+          </span>
+        </div>
+        <div className="w-full h-1.5 rounded-full bg-zinc-100 overflow-hidden">
+          <div
+            className="h-full bg-indigo-500 transition-all"
+            style={{ width: `${usedPct}%` }}
+          />
+        </div>
       </div>
 
       {/* Track selector */}
