@@ -42,3 +42,6 @@ next-env.d.ts
 
 #data
 /app/data/
+
+# local hard-drive batch-load script
+/scripts/batch-load-hard-drive.ts
