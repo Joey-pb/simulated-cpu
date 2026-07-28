@@ -12,6 +12,7 @@
     "test-interrupts": "tsx scripts/test-interrupts.ts",
     "test-peripherals": "tsx scripts/test-peripherals.ts",
     "test-persistence": "tsx scripts/test-persistence.ts",
+    "load-hd": "tsx scripts/batch-load-hard-drive.ts",
     "ws": "tsx server/ws.ts",
     "dev:all": "concurrently -k \"tsx server/ws.ts\" \"next dev -p 3005\""
   },
