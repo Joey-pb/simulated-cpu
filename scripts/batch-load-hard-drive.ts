@@ -65,16 +65,20 @@ enum OpCode {
 // ─── Data to be written ───────────────────────────────────────────────────
 
 const WRITES: WriteCommand[] = [
-  { track: 0, sector: 0, offset: 0, data: 0xde },
-  { track: 0, sector: 0, offset: 1, data: 0xad },
-  { track: 0, sector: 0, offset: 2, data: 0xbe },
-  { track: 1, sector: 1, offset: 0, data: 0xef },
-  { track: 1, sector: 1, offset: 1, data: 0x42 },
-  { track: 1, sector: 1, offset: 2, data: 0x42 },
-  { track: 2, sector: 2, offset: 0, data: 0xef },
-  { track: 2, sector: 2, offset: 1, data: 0x42 },
-  { track: 2, sector: 2, offset: 2, data: 0x42 },
-
+  { track: 0, sector: 0, offset: 0, data: 0x48 },
+  { track: 0, sector: 0, offset: 1, data: 0x65 },
+  { track: 0, sector: 0, offset: 2, data: 0x6c },
+  { track: 0, sector: 0, offset: 3, data: 0x6c },
+  { track: 0, sector: 0, offset: 4, data: 0x6f },
+  { track: 0, sector: 0, offset: 5, data: 0x20 },
+  { track: 0, sector: 0, offset: 6, data: 0x57 },
+  { track: 0, sector: 0, offset: 7, data: 0x6f },
+  { track: 0, sector: 0, offset: 8, data: 0x72 },
+  { track: 0, sector: 0, offset: 9, data: 0x6c },
+  { track: 0, sector: 0, offset: 10, data: 0x64 },
+  { track: 0, sector: 0, offset: 11, data: 0x21 },
+  { track: 0, sector: 0, offset: 12, data: 0x21 },
+  { track: 0, sector: 0, offset: 13, data: 0x21 },
 ];
 
 // const WRITES: WriteCommand[] = [];
