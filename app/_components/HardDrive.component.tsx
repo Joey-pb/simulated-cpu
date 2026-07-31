@@ -89,7 +89,7 @@ export function HardDriveControls({
 
   function startEdit(sector: number, offset: number): void {
     setEditingCell({ sector, offset });
-    setEditValue(hex2(cellValue(selectedTrack, sector, offset)));
+    setEditValue("");
   }
 
   function commitEdit(): void {
@@ -138,12 +138,6 @@ export function HardDriveControls({
       </div>
 
       {/* Address reference */}
-      <div className="text-[9px] text-zinc-400 font-mono leading-relaxed">
-        CMD {hexAddr(cmdAddress)} · TRK {hexAddr(trackAddress)} · SECT{" "}
-        {hexAddr(sectorAddress)} · OFF {hexAddr(offsetAddress)} · DATA{" "}
-        {hexAddr(dataAddress)} · STAT {hexAddr(statusAddress)}
-      </div>
-
       <div className="text-[9px] text-zinc-400 font-mono leading-relaxed">
         CMD {hexAddr(cmdAddress)} · TRK {hexAddr(trackAddress)} · SECT{" "}
         {hexAddr(sectorAddress)} · OFF {hexAddr(offsetAddress)} · DATA{" "}
@@ -206,14 +200,8 @@ export function HardDriveControls({
               return (
                 <div
                   key={`${s}-${o}`}
-                  className={`flex items-center justify-center h-5 px-1 py-0.5 cursor-pointer transition-colors ${
-                    selectedTrack === currentTrack &&
-                    s === currentSector &&
-                    o === currentOffset &&
-                    driveStatus !== 0
-                      ? "bg-amber-200 text-amber-800"
-                      : `bg-white hover:bg-indigo-50 ${isSet ? "text-green-600" : "text-zinc-500"}`
-                  }`}
+                  className={`flex items-center justify-center h-5 px-1 py-0.5 cursor-pointer transition-colors bg-white hover:bg-indigo-50 
+                    ${isSet ? "text-green-600" : "text-zinc-300"}`}
                   title={`T${selectedTrack}:S${s}:O${o} = 0x${hex2(value)}`}
                   onClick={() => startEdit(s, o)}
                 >
@@ -247,6 +235,7 @@ export function HardDriveControls({
         · click any cell to edit
       </div>
 
+      {/* Format Disk */}
       <button
         onClick={() => updatePeripheralAction(peripheralId, { format: true })}
         className="w-full px-2 py-1 rounded-md bg-red-50 text-red-600
