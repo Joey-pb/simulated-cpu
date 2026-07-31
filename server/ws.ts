@@ -53,7 +53,7 @@ const cpu = new CPUService(memory);
 
 // ─── HDD Persistence ───────────────────────────────────────────────────────────
 // Where the hard-drive's backing image lives on disk.
-const DISK_IMAGE_PATH = "./app/data/disk.img";
+const DISK_IMAGE_PATH = "data/disk.img";
 
 // ─── ISR Programs ───────────────────────────────────────────────────────────
 
