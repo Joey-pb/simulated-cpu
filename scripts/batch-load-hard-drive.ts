@@ -64,26 +64,31 @@ enum OpCode {
 
 // ─── Data to be written ───────────────────────────────────────────────────
 
-// const WRITES: WriteCommand[] = [
-//   { track: 0, sector: 0, offset: 0, data: 0xde },
-//   { track: 0, sector: 0, offset: 1, data: 0xad },
-//   { track: 0, sector: 1, offset: 0, data: 0xbe },
-//   { track: 1, sector: 0, offset: 0, data: 0xef },
-//   { track: 2, sector: 3, offset: 5, data: 0x42 },
-// ];
+const WRITES: WriteCommand[] = [
+  { track: 0, sector: 0, offset: 0, data: 0xde },
+  { track: 0, sector: 0, offset: 1, data: 0xad },
+  { track: 0, sector: 0, offset: 2, data: 0xbe },
+  { track: 1, sector: 1, offset: 0, data: 0xef },
+  { track: 1, sector: 1, offset: 1, data: 0x42 },
+  { track: 1, sector: 1, offset: 2, data: 0x42 },
+  { track: 2, sector: 2, offset: 0, data: 0xef },
+  { track: 2, sector: 2, offset: 1, data: 0x42 },
+  { track: 2, sector: 2, offset: 2, data: 0x42 },
 
-const WRITES: WriteCommand[] = [];
+];
 
-const BYTE_COUNT = 16; // Number of bytes to write.
-const SECTORS_PER_TRACK = 16; // mirrors the geometry in HardDrive.peripheral.ts
-const BYTES_PER_SECTOR = 16;
+// const WRITES: WriteCommand[] = [];
 
-for (let i = 0; i < BYTE_COUNT; i++) {
-  const track = Math.floor(i / (SECTORS_PER_TRACK * BYTES_PER_SECTOR));
-  const sector = Math.floor(i / BYTES_PER_SECTOR) % SECTORS_PER_TRACK;
-  const offset = i % BYTES_PER_SECTOR;
-  WRITES.push({ track, sector, offset, data: 0xde });
-}
+// const BYTE_COUNT = 16; // Number of bytes to write.
+// const SECTORS_PER_TRACK = 16; // mirrors the geometry in HardDrive.peripheral.ts
+// const BYTES_PER_SECTOR = 16;
+
+// for (let i = 0; i < BYTE_COUNT; i++) {
+//   const track = Math.floor(i / (SECTORS_PER_TRACK * BYTES_PER_SECTOR));
+//   const sector = Math.floor(i / BYTES_PER_SECTOR) % SECTORS_PER_TRACK;
+//   const offset = i % BYTES_PER_SECTOR;
+//   WRITES.push({ track, sector, offset, data: 0xde });
+// }
 
 // ─── Assembler ────────────────────────────────────────────────────────────
 
