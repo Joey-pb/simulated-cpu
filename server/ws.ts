@@ -136,7 +136,9 @@ function createPeripheral(msg: IncomingMessage): Peripheral {
       drive.storage,
     );
     // Fired after every WRITE — see writeToDisk() in HardDrive.peripheral.ts.
-    drive.setPersistenceHandler(() => persistence.persistData());
+    drive.setPersistenceHandler((storage, changedIndex) =>
+      persistence.persistData(changedIndex),
+    );
   }
 
   return peripheral;

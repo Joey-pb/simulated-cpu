@@ -25,7 +25,7 @@
  * {@link HardDrive.writeCell} bypasses the command-register flow and writes
  * directly into internal storage. The UI panel uses this to populate disk
  * contents without going through the CPU.
- * 
+ *
  * **Persistence:**
  * This class holds no reference to the filesystem. It exposes
  * {@link HardDrive.storage}, a live reference to the backing buffer, and
@@ -116,13 +116,16 @@ export class HardDrive implements Peripheral<HardDriveMeta> {
   private handlerAddress: number;
   private readonly memory: MemoryService;
 
-  // Flat disk storage.
+  // Authoritative in-memory disk contents. All READs, WRITEs, and direct UI
+  // edits (writeCell) act on this buffer directly, so it stays correct even
+  // if no persistence handler is registered. The backing image file, when
+  // present, mirrors this buffer one write behind — not the other way around.
   private diskStorage = new Uint8Array(TOTAL_BYTES);
 
   // Fired after each WRITE completes, if a persistence handler has been
   // wired up (see setPersistenceHandler). Left undefined by default so
   // this class stays filesystem-agnostic.
-  private onWrite?: (diskStorage: Uint8Array) => void;
+  private onWrite?: (diskStorage: Uint8Array, changedIndex?: number | undefined) => void;
 
   /**
    * Countdown timer for simulated seek delay.
@@ -193,8 +196,7 @@ export class HardDrive implements Peripheral<HardDriveMeta> {
 
     // Reject any command that isn't READ or WRITE.
     if (cmd != CMD.READ && cmd != CMD.WRITE) {
-      this.haltOnError();
-      return null;
+      this.haltOnError(`Invalid command: ${cmd}`);
     }
 
     const address = this.currentAddress; // Read the current address.
@@ -204,8 +206,7 @@ export class HardDrive implements Peripheral<HardDriveMeta> {
      * range, flag an error.
      */
     if (!this.isValidAddress(address)) {
-      this.haltOnError();
-      return null;
+      this.haltOnError(new RangeError(this.formatAddressError(address)));
     }
 
     // CASE 3: Start a new seek.
@@ -228,8 +229,7 @@ export class HardDrive implements Peripheral<HardDriveMeta> {
      * range, flag an error.
      */
     if (!this.isValidAddress(address)) {
-      this.haltOnError();
-      return null;
+      this.haltOnError(new RangeError(this.formatAddressError(address)));
     }
 
     if (cmd === CMD.READ) {
@@ -265,7 +265,7 @@ export class HardDrive implements Peripheral<HardDriveMeta> {
     const index = this.getDiskIndex(address);
     const data = this.memory.read(REG.DATA);
     this.diskStorage[index] = data;
-    this.onWrite?.(this.diskStorage);
+    this.onWrite?.(this.diskStorage, index);
   }
 
   private getDiskIndex(address: DiskAddress): number {
@@ -301,8 +301,18 @@ export class HardDrive implements Peripheral<HardDriveMeta> {
     );
   }
 
-  private haltOnError(): void {
+  private haltOnError(error: Error | string): never {
     this.setDriveState(STATUS.ERROR, CMD.NOP);
+
+    if (typeof error === "string") {
+      throw new Error(error);
+    }
+
+    throw error;
+  }
+
+  private formatAddressError(address: DiskAddress): string {
+    return `Invalid disk address: track ${address.track}, sector ${address.sector}, offset ${address.offset}`;
   }
 
   /**
@@ -310,7 +320,7 @@ export class HardDrive implements Peripheral<HardDriveMeta> {
    * (e.g. server/ws.ts) can persist `diskStorage` without this class
    * importing anything filesystem-related itself.
    */
-  setPersistenceHandler(onWrite: (diskStorage: Uint8Array) => void): void {
+  setPersistenceHandler(onWrite: (diskStorage: Uint8Array, changedIndex: number | undefined) => void): void {
     this.onWrite = onWrite;
   }
 
@@ -332,7 +342,15 @@ export class HardDrive implements Peripheral<HardDriveMeta> {
     if (this.isValidAddress(address)) {
       const index = this.getDiskIndex(address);
       this.diskStorage[index] = value;
-      this.onWrite?.(this.diskStorage);
+      this.onWrite?.(this.diskStorage, index);
+    } else {
+      /**
+       * This function bypasses the CPU. 
+       * This is why the haltOnError() function is not used here. 
+       * haltOnError() sets the drive state to ERROR. 
+       * Throwing an error in a direct UI write shouldn't impact the registers.
+       */
+      throw new RangeError(this.formatAddressError(address));
     }
   }
 

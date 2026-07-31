@@ -14,12 +14,20 @@
  * a different disk geometry) is ignored, leaving `diskStorage` untouched.
  *
  * **First run:**
- * If `imagePath` doesn't exist yet, an empty file is created immediately
- * so the image is visible on disk right away instead of only appearing
- * after the first WRITE.
+ * If `imagePath` doesn't exist yet, loading is skipped and `diskStorage`
+ * stays as constructed (zeroed). The file is created lazily on the first
+ * `persistData` call, whether that's a single-byte write or a full-buffer
+ * write (see `persistData`).
  */
 
-import { existsSync, readFileSync, writeFileSync } from "node:fs";
+import {
+  closeSync,
+  existsSync,
+  openSync,
+  readFileSync,
+  writeFileSync,
+  writeSync,
+} from "node:fs";
 
 export class HDDPersistenceService {
   private imagePath: string;
@@ -45,16 +53,51 @@ export class HDDPersistenceService {
   }
 
   /**
-   * Writes the entire `diskStorage` buffer to `imagePath`, overwriting it.
-   * Called once per WRITE (see `HardDrive.setPersistenceHandler`), so even
-   * a single changed byte re-writes the whole image rather than just
-   * that byte. This could be optimized to seek and write only the
-   * affected offset instead. 
-   * 
-   * Uses `writeFileSync`, which is synchronous
-   * and blocks the event loop until the write completes.
+   * Persists `diskStorage` to `imagePath`, synchronously.
+   *
+   * With `changedIndex` (the normal case — see `HardDrive.setPersistenceHandler`,
+   * called once per WRITE), only that single byte is seeked to and rewritten
+   * in place, leaving the rest of the file untouched. Without it, the entire
+   * buffer overwrites the file — used for bulk operations like `formatDisk()`
+   * where there's no single changed offset.
+   *
+   * Failures (missing file, permission errors, etc.) are caught, logged,
+   * and swallowed — a disk-write error here must not throw back through
+   * `HardDrive.tick()` and crash the CPU loop.
    */
-  persistData(): void {
-    writeFileSync(this.imagePath, this.diskStorage);
+  persistData(changedIndex?: number): void {
+    if (changedIndex == undefined) {
+      try {
+        writeFileSync(this.imagePath, this.diskStorage);
+        return;
+      } catch (err) {
+        console.error(
+          `[HDDPersistence] Failed to write full disk image to "${this.imagePath}":`,
+          (err as Error).message,
+        );
+        return;
+      }
+    }
+
+    let fd: number | undefined;
+    try {
+      // "r+" requires the file to already exist; "w+" creates it.
+      fd = openSync(this.imagePath, existsSync(this.imagePath) ? "r+" : "w+");
+      writeSync(
+        fd,
+        this.diskStorage,
+        changedIndex, // offset
+        1, // len (1 byte)
+        changedIndex, // position
+      );
+    } catch (err) {
+      console.error(
+        `[HDDPersistence] Failed to persist byte ${changedIndex} to "${this.imagePath}":`,
+        (err as Error).message,
+      );
+    } finally {
+      if (fd != undefined) closeSync(fd);
+    }
   }
 }
+
