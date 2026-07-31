@@ -23,11 +23,13 @@
 import {
   closeSync,
   existsSync,
+  mkdirSync,
   openSync,
   readFileSync,
   writeFileSync,
   writeSync,
 } from "node:fs";
+import { dirname } from "node:path";
 
 export class HDDPersistenceService {
   private imagePath: string;
@@ -43,6 +45,8 @@ export class HDDPersistenceService {
         if (savedData.length === diskStorage.length) {
           this.diskStorage.set(savedData); // Seed the live buffer in place.
         }
+      } else {
+        mkdirSync(dirname(this.imagePath), { recursive: true });
       }
     } catch (err) {
       console.error(
