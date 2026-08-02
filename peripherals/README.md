@@ -32,6 +32,7 @@ Each CPU clock tick, the system calls `tick()` on every connected peripheral. If
 | `Screen.peripheral.ts` | Display Screen | Output | Reads from memory and renders a scrolling waveform visualization |
 | `LED.peripheral.ts` | LED Light | Output | Reads a memory byte and turns on (≥128) or off (<128) |
 | `SevenSegmentDisplay.peripheral.ts` | Seven-Segment Display | Output | Reads a memory byte and shows its digits on seven-segment units |
+| `HardDrive.peripheral.ts` | Hard Drive | Input | 4 KiB of block storage driven by six memory-mapped command registers; seeks, then fires a completion interrupt. Contents persist to a disk image. See the [hard-drive documentation](../README.md#hard-drive-peripheral--a-contribution-to-simulated-cpu) |
 
 Every one of these is registered in **`registry.ts`** — the single file that tells the server, the "Add Peripheral" panel, and the visualizer that a peripheral type exists.
 
@@ -267,6 +268,38 @@ tick(): Interrupt | null {
   // ...
 }
 ```
+
+### Command-Register Devices
+
+Most peripherals here need a single memory address. A device that accepts *operations* rather than values needs several, and `HardDrive.peripheral.ts` is the worked example of that pattern:
+
+- **One register per parameter, plus a command register.** The CPU stores each parameter, then stores the command **last** — that final store is the trigger, so the device never observes a half-configured request.
+- **A status register the device owns.** The CPU reads it; only the device writes it. This is how the CPU learns `IDLE` / `BUSY` / `DONE` / `ERROR` without the device calling anything.
+- **Clear the command register on completion.** The device writing `NOP` back into `CMD` is what prevents a finished command from being re-executed on the next tick.
+- **Take several ticks.** A device that models real latency holds a countdown in `tick()` and returns `null` until it expires, then does the work and returns the interrupt. That is the whole reason completion interrupts exist.
+
+Pick register addresses at the **top** of the address space (`0x3F0` and up in this 1 KB memory). Programs load from low addresses upward, so high addresses are least likely to collide with code or scratch data.
+
+### Keeping `node` APIs Out of Your Peripheral
+
+If your device needs to touch the filesystem, **do not import `node:fs` into the peripheral file**. Peripheral modules are frequently imported by frontend components — for shared enums, register addresses, or type definitions — and a Node import there breaks the browser bundle.
+
+Instead expose two seams and let a Node-only owner supply the behaviour, as `HardDrive` does:
+
+```typescript
+// In the peripheral: no fs import, no fs knowledge.
+private onWrite?: (buffer: Uint8Array, changedIndex?: number) => void;
+
+setPersistenceHandler(cb: (buffer: Uint8Array, changedIndex?: number) => void): void {
+  this.onWrite = cb;
+}
+
+get storage(): Uint8Array {
+  return this.buffer; // live reference, so an owner can seed it in place
+}
+```
+
+`server/ws.ts` then wires the callback to a Node-only service at creation time. The peripheral works with or without a handler attached — it just isn't durable without one.
 
 ### Priority
 Lower numbers = higher urgency. If the CPU has to choose between two interrupts, it handles the lower-priority-number first:
